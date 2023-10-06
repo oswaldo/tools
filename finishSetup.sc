@@ -1,8 +1,10 @@
 #!/usr/bin/env -S scala-cli -S 3
 
 //> using scala 3.3.1
+//> using file "core.sc"
 //> using file "tools.sc"
 
+import core.*
 import tools.*
 
 //TODO think about saving last time the setup was run, and only running if it's been a while
