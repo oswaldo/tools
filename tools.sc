@@ -1,20 +1,24 @@
 //> using dep "com.lihaoyi::os-lib::0.9.1"
 
-import os._
+import os.*
+import util.*
 
-//extension method so I can use callText instead of call().out.text().trim()
+def arg[T](i: Int, parser: (String) => Option[T], default: => T): T =
+  Try {
+    parser(args(i))
+  } match
+    case Success(Some(value)) => value
+    case _                    => default
+
 extension (p: proc) def callText() = p.call().out.text().trim()
 
-//extension method so I can use callLines instead of call().out.lines()
 extension (p: proc) def callLines() = p.call().out.lines()
 
-//function to wrap a call to which, returning the path if found, or None if not
 def which(name: String): Option[Path] = {
   val path = os.proc("which", name).callText()
   if (path.isEmpty) None else Some(Path(path))
 }
 
-//function to append a line to a file
 def appendLine(file: Path, line: String) = {
   os.write.append(file, line + "\n")
 }
@@ -50,11 +54,20 @@ trait Tool(
 ) extends Dependency:
   def path() = which(name)
   override def installed() = path().isDefined
+  // TODO think about escaping the arguments
+  def callAsString(args: String*) =
+    s"$name ${args.mkString("'", "' '", "'")}"
   def callAsString(args: List[String]) =
-    s"$name ${args.mkString(" ")}"
+    s"$name ${args.mkString("'", "' '", "'")}"
+  def run(args: List[String]) =
+    os.proc(name, args).call()
   def run(args: String*) =
     os.proc(name, args).call()
+  def runVerbose(args: List[String]) =
+    println(s"running ${callAsString(args)}")
+    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
   def runVerbose(args: String*) =
+    println(s"running ${callAsString(args: _*)}")
     os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
   def runText(args: String*) =
     os.proc(name, args).callText()
@@ -72,7 +85,9 @@ case class BuiltInTool(
 
 trait Shell:
   this: Tool =>
-  def execute(script: String) = run("-c", s"\"script\"")
+  def execute(script: String) = run("-c", s"$script")
+  def executeVerbose(script: String) =
+    runVerbose("-c", s"$script")
 
 trait Font(
     override val name: String,
@@ -130,7 +145,7 @@ object mdfind extends BuiltInTool("mdfind"):
       "/Applications",
       "kMDItemCFBundleIdentifier == '" + bundleId + "'",
     ),
-  ) // if not empty map to path
+  )
     .filter(_.nonEmpty)
     .map(Path(_))
 
@@ -151,8 +166,7 @@ object xcodeSelect extends Tool("xcode-select"):
 object curl extends Tool("curl"):
   def get(url: String) = runText("-fsSL", url)
 
-object bash extends BuiltInTool("bash") with Shell:
-  override def install(): Unit = () // we assume at least bash is there
+object bash extends BuiltInTool("bash") with Shell
 
 object vscode extends Tool("code"):
   override def install(): Unit =
@@ -163,37 +177,37 @@ object displayplacer extends Tool("displayplacer"):
     brew.tap("jakehilborn/jakehilborn")
     brew.install("displayplacer")
 
-  case class Display(id: String, tpe: String, resolution: (Int, Int)):
-    def origin(position: Position): (Int, Int) =
-      position match
-        case Position.LeftOf =>
-          (resolution._1, 0)
-        case Position.RightOf =>
-          (-resolution._1, 0)
-        case Position.Above =>
-          (0, -resolution._2)
-        case Position.Below =>
-          (0, resolution._2)
+  case class Display(
+      id: String,
+      tpe: String = "",
+      resolution: (Int, Int) = (0, 0),
+      scaling: Boolean = false,
+  )
 
-  // we will have an enum with the possible positions.
-  enum Position():
-    case LeftOf, RightOf, Above, Below
-    def argument: String = this match
-      case LeftOf  => "left"
-      case RightOf => "right"
-      case Above   => "above"
-      case Below   => "below"
+  enum Position(val origin: ((Int, Int)) => (Int, Int)):
+    case Left extends Position((w, _) => (w, 0))
+    case Right extends Position((w, _) => (-w, 0))
+    case Above extends Position((_, h) => (0, h))
+    case Below extends Position((_, h) => (0, -h))
+  object Position:
+    def fromString(s: String): Option[Position] =
+      s.toLowerCase() match
+        case "left"  => Some(Left)
+        case "right" => Some(Right)
+        case "above" => Some(Above)
+        case "below" => Some(Below)
+        case _       => None
 
-  // we will have a method to parse the output of displayplacer list, holding the id, type and resolution of each display.
   def displays(): List[Display] =
     val idLine = "Contextual screen id:"
     val resolutionLine = "Resolution:"
+    val scalingLine = "Scaling: "
     val typeLine = "Type:"
     runLines("list")
       .foldLeft(List.empty[Display]) {
         case (acc, line) if line.startsWith(idLine) =>
           val id = line.stripPrefix(idLine).trim
-          acc :+ Display(id, "", (0, 0))
+          acc :+ Display(id)
         case (acc, line) if line.startsWith(resolutionLine) =>
           val resolution = line.stripPrefix(resolutionLine).trim
           val (width, height) = resolution.split("x").map(_.trim()).toList match
@@ -202,6 +216,9 @@ object displayplacer extends Tool("displayplacer"):
             case _ =>
               (0, 0)
           acc.init :+ acc.last.copy(resolution = (width, height))
+        case (acc, line) if line.startsWith(scalingLine) =>
+          val scaling = line.stripPrefix(scalingLine)
+          acc.init :+ acc.last.copy(scaling = scaling == "on")
         case (acc, line) if line.startsWith(typeLine) =>
           val tpe = line.stripPrefix(typeLine).trim
           acc.init :+ acc.last.copy(tpe = tpe)
@@ -209,9 +226,7 @@ object displayplacer extends Tool("displayplacer"):
           acc
       }
 
-  // if there is an external display attached, position it relative to the builtin display
-  // as the lid can be closed, the builtin display might not be available, so we abort if the number of displays is not 2 and one of them is not of type "MacBook built in screen"
-  def place(position: Position = Position.Above): Unit =
+  def placeBuiltIn(position: Position = Position.Below): Unit =
     val currentDisplays = displays()
     val builtinTpe = "MacBook built in screen"
     println(
@@ -230,16 +245,25 @@ object displayplacer extends Tool("displayplacer"):
           )
           return
       }
-    val origin = external.origin(position)
-    val arguments = List(
-      "id:" + builtin.id,
-      "origin:(" + origin._1 + "," + origin._2 + ")",
-      "degree:0",
-      "id:" + external.id,
-      "origin:(0,0)",
-      "degree:0",
-    )
+    val arguments =
+      currentDisplays
+        .map(d =>
+          s"""id:${d.id} res:${d.resolution._1}x${d.resolution._2} scaling:${
+              if d.scaling then "on" else "off"
+            } origin:(${val o =
+              (if d.id == builtin.id then (0, 0)
+               else position.origin(external.resolution))
+              s"${o._1},${o._2}"
+            }) degree:0""",
+        )
+
     println(
       s"placing displays by calling: ${callAsString(arguments)}",
     )
-    run(arguments: _*)
+
+    run(arguments)
+
+  def placeBuiltInLeft(): Unit = placeBuiltIn(Position.Left)
+  def placeBuiltInRight(): Unit = placeBuiltIn(Position.Right)
+  def placeBuiltInAbove(): Unit = placeBuiltIn(Position.Above)
+  def placeBuiltInBelow(): Unit = placeBuiltIn(Position.Below)

@@ -5,5 +5,7 @@
 
 import tools.* 
 
+val position = arg(0, displayplacer.Position.fromString, displayplacer.Position.Right)
+
 displayplacer.installIfNeeded()
-displayplacer.place()
+displayplacer.placeBuiltIn(position)

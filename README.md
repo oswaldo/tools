@@ -19,3 +19,5 @@ Wouldn't it be nice to have scripts that simply run with no relevant overhead, t
 Wouldn't it be nice to have scripts that are easy to read and maintain, with great IDE support and immediate, access to the accumulated knowledge and technologies from different communities?
 
 This is what this project is about.
+
+## Adding a new tool
