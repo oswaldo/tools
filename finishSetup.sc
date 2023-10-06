@@ -1,8 +1,8 @@
 #!/usr/bin/env -S scala-cli -S 3
 
 //> using scala 3.3.1
-//> using file "core.sc"
-//> using file "tools.sc"
+//> using file "common/core.sc"
+//> using file "common/tools.sc"
 
 import core.*
 import tools.*

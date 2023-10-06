@@ -118,3 +118,11 @@ object brew extends Tool("brew", List(xcodeSelect, curl)):
   def install(formula: String) = run("install", formula)
   def installCask(formula: String) = run("install", "--cask", formula)
   def tap(tap: String) = run("tap", tap)
+
+object git extends Tool("git"):
+  def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
+    run("clone", repo, path.toString)
+  def hubClone(githubUserAndRepo: String)(
+      path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
+  ) =
+    clone(s"https://github.com/$githubUserAndRepo.git")(path)

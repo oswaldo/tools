@@ -1,8 +1,8 @@
 #!/usr/bin/env -S scala-cli -S 3
 
 //> using scala 3.3.1
-//> using file "core.sc"
-//> using file "tools.sc"
+//> using file "../common/core.sc"
+//> using file "../common/tools.sc"
 
 import core.* 
 import tools.* 
@@ -103,8 +103,3 @@ object displayplacer extends Tool("displayplacer"):
   def placeBuiltInRight(): Unit = placeBuiltIn(Position.Right)
   def placeBuiltInAbove(): Unit = placeBuiltIn(Position.Above)
   def placeBuiltInBelow(): Unit = placeBuiltIn(Position.Below)
-
-// TODO think about reuse, splitting the tool integration (above) from the actual use (below)
-
-displayplacer.installIfNeeded()
-displayplacer.placeBuiltIn(arg(0, displayplacer.Position.fromString, displayplacer.Position.Right))

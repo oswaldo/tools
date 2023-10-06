@@ -1,5 +1,5 @@
 //> using dep "com.lihaoyi::os-lib::0.9.1"
-//> using file "core.sc"
+//> using file "common/core.sc"
 
 import os.*
 import core.*
