@@ -15,8 +15,9 @@ extension (p: proc) def callText() = p.call().out.text().trim()
 extension (p: proc) def callLines() = p.call().out.lines()
 
 def which(name: String): Option[Path] = {
-  val path = os.proc("which", name).callText()
-  if (path.isEmpty) None else Some(Path(path))
+  Try(os.proc("which", name).callText()) match
+    case Success(path) => Some(Path(path))
+    case _             => None
 }
 
 def appendLine(file: Path, line: String) = {
@@ -28,17 +29,19 @@ trait Dependency:
   val dependencies: List[Dependency] = List.empty
   def installed(): Boolean
   def installDependencies(): Unit =
-    println(s"checking if dependencies of $name are installed")
+    println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
       d.installDependencies()
       if (!d.installed()) d.install()
     }
   def install(): Unit = if (!installed()) {
+    println(s"installing $name...")
     brew.install(name)
+    println(s"$name is installed")
   }
   def installIfNeeded(): Unit = {
     installDependencies()
-    println(s"checking if $name is installed")
+    println(s"checking if $name is installed...")
     if (!installed()) install()
   }
 
@@ -118,6 +121,13 @@ object brew extends Tool("brew", List(xcodeSelect, curl)):
   def install(formula: String) = run("install", formula)
   def installCask(formula: String) = run("install", "--cask", formula)
   def tap(tap: String) = run("tap", tap)
+
+object scalaCli extends Tool("scala-cli"):
+  override def install(): Unit =
+    brew install "Virtuslab/scala-cli/scala-cli"
+  def installCompletions() =
+    // it already checks if completions are installed, so no need to check for this case
+    runVerbose("install", "completions")
 
 object git extends Tool("git"):
   def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =

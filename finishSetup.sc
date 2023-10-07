@@ -13,6 +13,9 @@ println("Finishing setup...")
 installIfNeeded(
     //currently brew is essential for this project as we focus on mac for now and it's the easiest way to install most of the things we need
     brew,
+
+    //scala-cli is the actual platform for our scripts here, and yes, we can use a scala-cli script to install scala-cli 🤯
+    scalaCli,
     
     //llvm if you want to play with scala native
     // llvm,

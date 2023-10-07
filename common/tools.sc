@@ -4,11 +4,6 @@
 import os.*
 import core.*
 
-object scalaCli extends BuiltInTool("scala-cli"):
-  def installCompletions() =
-    // it already checks if completions are installed, so no need to check for this case
-    runVerbose("install", "completions")
-
 object llvm extends Tool("llvm-gcc"):
   override def install(): Unit =
     brew.install(name)
