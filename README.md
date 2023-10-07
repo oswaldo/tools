@@ -24,6 +24,21 @@ This is what this project is about.
 
 ### Setup
 
+Currently this project is developed and tested only on MacOS and, although the project could even be used to install git itself, for now we assume you already have it installed.
+
+So open your terminal and run the following commands:
+
+```bash
+# create a folder to where you want to clone the project
+mkdir -p ~/git/tools
+# clone the project there
+git clone https://github.com/oswaldo/tools.git ~/git/tools
+# go to the project folder
+cd ~/git/tools
+# run the setup script
+./setup.sh
+```
+
 ### First script
 
 ### Adding a new tool
@@ -78,6 +93,14 @@ Hopefully the code is simple enough to be self-explanatory, but here is a quick 
 ### `displayplacer`
 
 ### `git`
+
+## Future work
+
+### `podman`
+
+### Intentions
+
+## Syntax
 
 ## REPL
 
@@ -135,3 +158,9 @@ val res1: os.CommandResult = Result of git…: 0
 ```
 
 All known requirements will be checked and installed if necessary 🪄
+
+### Why not just use bash/Python/SomeOtherPopularScriptingLanguage?
+
+### Why not a more pure, functional style?
+
+### Why not some provisioning tool like Ansible? Or a configuration management tool like Puppet? Aren't you reinventing the wheel?
