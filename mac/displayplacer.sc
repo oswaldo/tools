@@ -9,7 +9,22 @@ import tools.*
 
 
 object displayplacer extends Tool("displayplacer"):
-  override def install(): Unit =
+
+  override def installedVersion(): InstalledVersion =
+    val versionLinePrefix = "displayplacer v"
+    runText("--version") match
+      case "" => InstalledVersion.None
+      case v =>
+        InstalledVersion.Version(
+          v.linesIterator
+            .find(_.startsWith(versionLinePrefix))
+            .get
+            .stripPrefix(versionLinePrefix)
+            .split(" ")
+            .head,
+        )
+
+  override def install(requiredVersion: RequiredVersion): Unit =
     brew.tap("jakehilborn/jakehilborn")
     brew.install("displayplacer")
 

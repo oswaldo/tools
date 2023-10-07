@@ -5,25 +5,24 @@ import os.*
 import core.*
 
 object llvm extends Tool("llvm-gcc"):
-  override def install(): Unit =
+  override def install(requiredVersion: RequiredVersion): Unit =
     brew.install(name)
 
 object fcList extends BuiltInTool("fc-list"):
   def list(fontPrefix: String = "") = runLines(
-    (if fontPrefix.isBlank() then Nil else List(fontPrefix)): _*,
+    (if fontPrefix.isBlank() then Nil else List(fontPrefix))*,
   )
 
 object zsh extends Tool("zsh") with Shell
 
 object hackNerdFont extends Font("font-hack-nerd-font", "HackNerdFont"):
-  override def install(): Unit =
+  override def install(requiredVersion: RequiredVersion): Unit =
     brew.tap("homebrew/cask-fonts")
-    super.install()
+    super.install(requiredVersion)
 
-object spaceshipPrompt
-    extends Tool("spaceship-prompt", List(zsh, hackNerdFont)):
-  override def install(): Unit =
-    super.install()
+object spaceshipPrompt extends Tool("spaceship-prompt", RequiredVersion.any(zsh, hackNerdFont)):
+  override def install(requiredVersion: RequiredVersion): Unit =
+    super.install(requiredVersion)
     appendLine(
       os.home / ".zshrc",
       "source $(brew --prefix)/opt/spaceship/spaceship.zsh",
@@ -45,9 +44,9 @@ object iterm2 extends Tool("iterm2"):
   override def path(): Option[Path] =
     mdfind
       .findByBundleId("com.googlecode.iterm2")
-  override def install(): Unit =
+  override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask(name)
 
 object vscode extends Tool("code"):
-  override def install(): Unit =
+  override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask("visual-studio-code")
