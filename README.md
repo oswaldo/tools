@@ -3,6 +3,8 @@
 > _Here be dragons 🐉_
 > This is a first draft / work in progress / flow of thought, and at the moment should not be considered as ready for production.
 > Lots of totally untested code ahead.
+> The scripts are expected to run in YOLO mode, installing things with no confirmation.
+> You have been warned 🤓
 
 When bash scripts go a bit beyond the trivial, they usually become a maintenance nightmare.
 
@@ -43,40 +45,44 @@ cd ~/git/tools
 
 ### Adding a new tool
 
-Suppose ywe want to add support to git so we can conveniently use it in your scripts (supposing it wasn't already there).
+Suppose we want to add support to git so we can conveniently use it in your scripts (supposing it wasn't already there).
 
 1. **Adding support**
+
    1.1. As it is a very common and widely used tool, most probably we want to add it to the `core` module, so we can use it in all our scripts. So we add to the bottom of the `common/core.sc` file the following line:
 
-```scala
-object git extends Tool("git")
-```
+   ```scala
+   object git extends Tool("git")
+   ```
 
-1.2. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
+   1.2. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
 
 2. **Adding functionality**
+
    2.1. Let's add a function to clone a repository. We change the `git` object we just added to `common/core.sc` to the following:
 
-```scala
-object git extends Tool("git"):
-  def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
-    run("clone", repo, path.toString)
-```
+   ```scala
+   object git extends Tool("git"):
+     def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
+       run("clone", repo, path.toString)
+   ```
 
-2.2. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones github repositories to a specific folder by providing the user and repo name:
+   2.2. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones github repositories to a specific folder by providing the user and repo name:
 
-```scala
-  def hubClone(githubUserAndRepo: String)(
-      path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
-  ) =
-    clone(s"https://github.com/$githubUserAndRepo.git")(path)
-```
+   ```scala
+     def hubClone(githubUserAndRepo: String)(
+         path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
+     ) =
+       clone(s"https://github.com/$githubUserAndRepo.git")(path)
+   ```
 
-2.3. Great! Now you can write scripts that can clone github repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
+   2.3. Great! Now you can write scripts that can clone github repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
 
-```scala
-git.hubClone("oswaldo/tools")(os.home / "example" / "build")
-```
+   ```scala
+   git.hubClone("oswaldo/tools")(os.home / "example" / "build")
+   ```
+
+## Contributing
 
 ## Directory structure
 
@@ -99,6 +105,8 @@ Hopefully the code is simple enough to be self-explanatory, but here is a quick 
 ### `podman`
 
 ### Intentions
+
+### Assistant
 
 ## Syntax
 
