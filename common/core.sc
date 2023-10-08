@@ -32,6 +32,7 @@ enum VersionCompatibility extends VersionCompatibilityProperties:
   case Compatible(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion) 
   case Incompatible(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
   case Outdated(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
+  case Missing(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
   case Unknown(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
   def compatible: Boolean = this match
     case _ : Compatible => true
@@ -51,7 +52,12 @@ enum RequiredVersion:
       case (Latest, _) => Compatible(installedVersion, this)
       case (Exact(dependency), Version(installed)) =>
         if dependency == installed then Compatible(installedVersion, this)
-        else Incompatible(installedVersion, this)
+        else 
+          println(s"  dependency not met! (required: $this, installed: $installedVersion)")
+          Incompatible(installedVersion, this)
+      case (_, Absent) =>
+        println(s"  dependency missing! (required: $this, installed: $installedVersion)")
+        Missing(installedVersion, this)
       case (AtLeast(dependency), Version(installed)) =>
         import just.semver.SemVer
         val result = for
@@ -62,9 +68,11 @@ enum RequiredVersion:
           case Right(Success(true))  => Compatible(installedVersion, this)
           case Right(Success(false)) => Outdated(installedVersion, this)
           case e =>
-            println(s"compatibility check failed: $e")
+            println(s"  compatibility check failed (required: $this, installed: $installedVersion, failure: $e)")
             Unknown(installedVersion, this)
-      case _ => Unknown(installedVersion, this)
+      case _ => 
+        println(s"  unknown compatibility state (required: $this, installed: $installedVersion)")
+        Unknown(installedVersion, this)
     println(s"  result: $result")
     result
 end RequiredVersion
@@ -103,18 +111,19 @@ trait Artifact:
     println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
       d.installDependencies()
-      if (!d.compatibleVersionInstalled().compatible) d.install()
+      if (!d.compatibleVersionInstalled().compatible) d.installIfNeeded()
     }
   def install(requiredVersion: RequiredVersion): Unit =
     if !requiredVersion.compatibleWith(installedVersion()).compatible then
       println(s"installing $name...")
       brew.installFormula(name)
       println(s"$name is installedVersion")
-  def upgrade(versionCompatibility: VersionCompatibility): Unit =
+  def upgrade(versionCompatibility: VersionCompatibility): InstalledVersion =
     //TODO make the concept of a PackageManager explicit, so we can pick the right one or abort if none available
     println(s"upgrading $name...")
     brew.installFormula(name)
     println(s"$name is upgraded")
+    installedVersion()
   def installIfNeeded(requiredVersion: RequiredVersion = RequiredVersion.Latest): Unit =
     installDependencies()
     println(s"checking if $name is installed...")
@@ -129,8 +138,16 @@ trait Artifact:
       case VersionCompatibility.Outdated(installed, required) =>
         println(s"$name is already installed in an outdated version. will try upgrading (installed: $installed, required: $required)...")
         upgrade(versionCompatibility)
+      case VersionCompatibility.Missing(installed, required) =>
+        println(s"$name is not installed. will try installing it (required: $required)...")
+        install(requiredVersion)
       case VersionCompatibility.Unknown(installed, required) =>
-        println(s"$name is already installed but the compatibility check failed. For now, will assume the installed version is compatible (installed: $installed, required: $required)...")
+        required match
+          case RequiredVersion.Any =>
+            println(s"$name is already installed but the compatibility check failed. For now, will assume the installed version is compatible (installed: $installed, required: $required)...")
+          case _ =>
+            println(s"$name is already installed but the compatibility check failed. will try upgrading so we try getting to the required version (installed: $installed, required: $required)...")
+            upgrade(versionCompatibility)
 end Artifact
 
 def installIfNeeded(artifacts: Artifact*): Unit =
@@ -196,18 +213,24 @@ trait Font(
 object bash extends BuiltInTool("bash") with Shell
 
 object pkgutil extends BuiltInTool("pkgutil"):
-  def pkgInfo(packageId: String) = runText("--pkg-info", packageId)
+  def pkgInfo(packageId: String) = Try(runText("--pkg-info", packageId)) match
+    case Success(info) =>
+      Some(info.trim()).filter(_.nonEmpty)
+    case _             => None
+  
 
 object xcodeSelect extends Tool("xcode-select"):
-  override def path(): Option[Path] = runText("-p") match
-    case ""   => None
-    case path => Some(Path(path))
+  override def path(): Option[Path] = Try(runText("-p")) match
+    case Success(path) if path.nonEmpty => Some(Path(path)).filter(os.exists)
+    case _   => None
   // TODO think if we should support a case like "for checking the xcode command line tools version, we need to call pkgutil, but the key changes depending on MacOS version". Should macos show up as a Tool?
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "version: "
     pkgutil.pkgInfo("com.apple.pkg.CLTools_Executables") match
-      case "" => InstalledVersion.Absent
-      case v =>
+      case None => path() match
+        case None => InstalledVersion.Absent
+        case Some(_) => InstalledVersion.NA
+      case Some(v) =>
         val semverSafe = v.linesIterator
           .find(_.startsWith(versionLinePrefix))
           .get
@@ -216,7 +239,21 @@ object xcodeSelect extends Tool("xcode-select"):
           .take(3)
           .mkString(".")
         InstalledVersion.Version(semverSafe)
-  override def install(requiredVersion: RequiredVersion) = run("--install")
+  override def install(requiredVersion: RequiredVersion) = 
+    // TODO decide on a way to hold, waiting for xcode-select to be installed
+    run("--install")
+    println("""!!! Although most of this codebase just runs everything needed, no questions asked, YOLO, this is a special case.
+    |!!! You should now see a screen to start its installation.
+    |!!! After that is complete, try this script again""".stripMargin)
+    throw new Exception("Script Aborted: xcode-select installation in progress")
+  override def upgrade(versionCompatibility: VersionCompatibility): InstalledVersion =
+    //TODO try, as some recommend online, `softwareupdate --list` and `softwareupdate --install` first and if that fails continue with a manual upgrade as described below
+    //Didn't try like coding it like that at first because the only machine I had for testing would fail anyway.
+    println("""!!! Although most of this codebase just runs everything needed, no questions asked, YOLO, this is a special case.
+    |!!! We cannot upgrade xcode command line tools without user interaction because it requires sudo to remove the old installation.
+    |!!! So, please run `sudo rm -rf $(xcode-select -print-path)` and try again so this script can install the latest version.`""".stripMargin)
+    //TODO think about some custom exceptions but preferably refactor so we can return something that represents the fact of a failed upgrade, so maybe other components can react to it and maybe even try an alternative without the verbosity of exception handling
+    throw new Exception("Script Aborted: obsolete xcode-select needs to be removed first")
 
 object curl extends Tool("curl"):
   override def installedVersion(): InstalledVersion =
