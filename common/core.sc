@@ -23,13 +23,18 @@ def which(name: String): Option[Path] =
 def appendLine(file: Path, line: String) =
   os.write.append(file, line + "\n")
 
-enum VersionCompatibility:
-  case Compatible
-  case Incompatible
-  case Outdated
-  case Unknown
+trait VersionCompatibilityProperties:
+  def installedVersion: InstalledVersion
+  def requiredVersion: RequiredVersion
+  def compatible: Boolean
+
+enum VersionCompatibility extends VersionCompatibilityProperties:
+  case Compatible(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion) 
+  case Incompatible(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
+  case Outdated(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
+  case Unknown(override val installedVersion: InstalledVersion, override val requiredVersion: RequiredVersion)
   def compatible: Boolean = this match
-    case Compatible => true
+    case _ : Compatible => true
     case _          => false
 
 enum RequiredVersion:
@@ -39,25 +44,27 @@ enum RequiredVersion:
   case AtLeast(version: String)
   def compatibleWith(installedVersion: InstalledVersion): VersionCompatibility =
     println(s"  installed: ${installedVersion.versionOrCase} required: $this")
+    import VersionCompatibility.*
+    import InstalledVersion.*
     val result = (this, installedVersion) match
-      case (Any, _)    => VersionCompatibility.Compatible
-      case (Latest, _) => VersionCompatibility.Compatible
-      case (Exact(dependency), InstalledVersion.Version(installed)) =>
-        if dependency == installed then VersionCompatibility.Compatible
-        else VersionCompatibility.Incompatible
-      case (AtLeast(dependency), InstalledVersion.Version(installed)) =>
+      case (Any, _)    => Compatible(installedVersion, this)
+      case (Latest, _) => Compatible(installedVersion, this)
+      case (Exact(dependency), Version(installed)) =>
+        if dependency == installed then Compatible(installedVersion, this)
+        else Incompatible(installedVersion, this)
+      case (AtLeast(dependency), Version(installed)) =>
         import just.semver.SemVer
         val result = for
           dependency <- SemVer.parse(dependency)
           installed  <- SemVer.parse(installed)
         yield Try(dependency <= installed)
         result match
-          case Right(Success(true))  => VersionCompatibility.Compatible
-          case Right(Success(false)) => VersionCompatibility.Outdated
+          case Right(Success(true))  => Compatible(installedVersion, this)
+          case Right(Success(false)) => Outdated(installedVersion, this)
           case e =>
             println(s"compatibility check failed: $e")
-            VersionCompatibility.Unknown
-      case _ => VersionCompatibility.Unknown
+            Unknown(installedVersion, this)
+      case _ => Unknown(installedVersion, this)
     println(s"  result: $result")
     result
 end RequiredVersion
@@ -74,12 +81,12 @@ object RequiredVersion:
 
 enum InstalledVersion:
   case Version(version: String)
-  case None
-  case Unknown
+  case Absent
+  case NA
   def versionOrCase = this match
     case Version(v) => v
-    case None       => "None"
-    case Unknown    => "Unknown"
+    case Absent       => "Absent"
+    case NA    => "NA"
 
 case class Dependency(artifact: Artifact, version: RequiredVersion):
   def installDependencies() = artifact.installDependencies()
@@ -91,7 +98,7 @@ case class Dependency(artifact: Artifact, version: RequiredVersion):
 trait Artifact:
   val name: String
   val dependencies: List[Dependency]       = List.empty
-  def installedVersion(): InstalledVersion = InstalledVersion.Unknown
+  def installedVersion(): InstalledVersion = InstalledVersion.NA
   def installDependencies(): Unit =
     println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
@@ -101,12 +108,29 @@ trait Artifact:
   def install(requiredVersion: RequiredVersion): Unit =
     if !requiredVersion.compatibleWith(installedVersion()).compatible then
       println(s"installing $name...")
-      brew.install(name)
+      brew.installFormula(name)
       println(s"$name is installedVersion")
+  def upgrade(versionCompatibility: VersionCompatibility): Unit =
+    //TODO make the concept of a PackageManager explicit, so we can pick the right one or abort if none available
+    println(s"upgrading $name...")
+    brew.installFormula(name)
+    println(s"$name is upgraded")
   def installIfNeeded(requiredVersion: RequiredVersion = RequiredVersion.Latest): Unit =
     installDependencies()
     println(s"checking if $name is installed...")
-    if (!requiredVersion.compatibleWith(installedVersion()).compatible) install(requiredVersion)
+    val versionCompatibility = requiredVersion.compatibleWith(installedVersion())
+    versionCompatibility match
+      case VersionCompatibility.Compatible(_, required) =>
+        println(s"$name is already installed in a compatible version (required: $required)")
+      case VersionCompatibility.Incompatible(installed, required) =>
+        //TODO think about making options of replacing or downgrading explicit
+        println(s"$name is already installed in an incompatible version. will try installing the required version (installed: $installed, required: $required)...")
+        install(requiredVersion)
+      case VersionCompatibility.Outdated(installed, required) =>
+        println(s"$name is already installed in an outdated version. will try upgrading (installed: $installed, required: $required)...")
+        upgrade(versionCompatibility)
+      case VersionCompatibility.Unknown(installed, required) =>
+        println(s"$name is already installed but the compatibility check failed. For now, will assume the installed version is compatible (installed: $installed, required: $required)...")
 end Artifact
 
 def installIfNeeded(artifacts: Artifact*): Unit =
@@ -124,7 +148,7 @@ trait Tool(
 ) extends Artifact:
   def path() = which(name)
   override def installedVersion() = runText("--version") match
-    case "" => InstalledVersion.None
+    case "" => InstalledVersion.Absent
     case v  => InstalledVersion.Version(v)
   // TODO think about escaping the arguments
   def callAsString(args: String*) =
@@ -167,7 +191,7 @@ trait Font(
 ) extends Artifact:
   override def installedVersion(): InstalledVersion =
     val fonts = os.proc("fc-list").callText()
-    if fonts.contains(name) then InstalledVersion.Unknown else InstalledVersion.None
+    if fonts.contains(name) then InstalledVersion.NA else InstalledVersion.Absent
 
 object bash extends BuiltInTool("bash") with Shell
 
@@ -182,7 +206,7 @@ object xcodeSelect extends Tool("xcode-select"):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "version: "
     pkgutil.pkgInfo("com.apple.pkg.CLTools_Executables") match
-      case "" => InstalledVersion.None
+      case "" => InstalledVersion.Absent
       case v =>
         val semverSafe = v.linesIterator
           .find(_.startsWith(versionLinePrefix))
@@ -198,7 +222,7 @@ object curl extends Tool("curl"):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "curl "
     runText("--version") match
-      case "" => InstalledVersion.None
+      case "" => InstalledVersion.Absent
       case v =>
         InstalledVersion.Version(
           v.linesIterator
@@ -213,21 +237,22 @@ object curl extends Tool("curl"):
 object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   override def installedVersion(): InstalledVersion =
     runText("--version") match
-      case "" => InstalledVersion.None
+      case "" => InstalledVersion.Absent
       case v  => InstalledVersion.Version(v.linesIterator.next().stripPrefix("Homebrew ").trim())
   override def install(requiredVersion: RequiredVersion): Unit =
     val homebrewInstaller =
       curl get "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
     bash execute homebrewInstaller
-  def install(formula: String)     = run("install", formula)
+  def installFormula(formula: String)     = run("install", formula)
   def installCask(formula: String) = run("install", "--cask", formula)
   def tap(tap: String)             = run("tap", tap)
+  def upgradeFormula(formula: String)     = run("upgrade", formula)
 
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "Scala CLI version: "
     runText("--version") match
-      case "" => InstalledVersion.None
+      case "" => InstalledVersion.Absent
       case v =>
         InstalledVersion.Version(
           v.linesIterator
@@ -238,7 +263,7 @@ object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredV
             .head,
         )
   override def install(requiredVersion: RequiredVersion): Unit =
-    brew install "Virtuslab/scala-cli/scala-cli"
+    brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =
     // it already checks if completions are installed, so no need to check for this case
     runVerbose("install", "completions")

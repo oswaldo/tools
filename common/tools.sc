@@ -6,7 +6,7 @@ import core.*
 
 object llvm extends Tool("llvm-gcc"):
   override def install(requiredVersion: RequiredVersion): Unit =
-    brew.install(name)
+    brew.installFormula(name)
 
 object fcList extends BuiltInTool("fc-list"):
   def list(fontPrefix: String = "") = runLines(

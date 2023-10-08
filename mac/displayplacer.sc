@@ -13,7 +13,7 @@ object displayplacer extends Tool("displayplacer"):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "displayplacer v"
     runText("--version") match
-      case "" => InstalledVersion.None
+      case "" => InstalledVersion.Absent
       case v =>
         InstalledVersion.Version(
           v.linesIterator
@@ -26,7 +26,7 @@ object displayplacer extends Tool("displayplacer"):
 
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.tap("jakehilborn/jakehilborn")
-    brew.install("displayplacer")
+    brew.installFormula("displayplacer")
 
   case class Display(
       id: String,
