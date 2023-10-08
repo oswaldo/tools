@@ -48,8 +48,8 @@ enum RequiredVersion:
     import VersionCompatibility.*
     import InstalledVersion.*
     val result = (this, installedVersion) match
-      case (Any, _)    => Compatible(installedVersion, this)
-      case (Latest, _) => Compatible(installedVersion, this)
+      case (Any, required) if required != Absent => Compatible(installedVersion, this)
+      case (Latest, required) if required != Absent => Compatible(installedVersion, this)
       case (Exact(dependency), Version(installed)) =>
         if dependency == installed then Compatible(installedVersion, this)
         else 
@@ -164,9 +164,10 @@ trait Tool(
   override val dependencies: List[Dependency] = List.empty,
 ) extends Artifact:
   def path() = which(name)
-  override def installedVersion() = runText("--version") match
-    case "" => InstalledVersion.Absent
-    case v  => InstalledVersion.Version(v)
+  override def installedVersion() = Try(runText("--version")) match
+    case Success(v)  => 
+      Some(v).filter(_.nonEmpty).map(InstalledVersion.Version(_)).getOrElse(InstalledVersion.NA)
+    case _ => InstalledVersion.Absent
   // TODO think about escaping the arguments
   def callAsString(args: String*) =
     s"$name ${args.mkString("'", "' '", "'")}"
@@ -288,17 +289,19 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "Scala CLI version: "
-    runText("--version") match
-      case "" => InstalledVersion.Absent
-      case v =>
-        InstalledVersion.Version(
+    Try(runText("--version")) match
+      case Success(v) =>
+        Some(v).filter(_.nonEmpty).map{ v =>
+          InstalledVersion.Version(
           v.linesIterator
             .find(_.startsWith(versionLinePrefix))
             .get
             .stripPrefix(versionLinePrefix)
             .split(" ")
             .head,
-        )
+          )
+        }.getOrElse(InstalledVersion.NA)
+      case _ => InstalledVersion.Absent
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =

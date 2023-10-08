@@ -6,23 +6,27 @@
 
 import core.* 
 import tools.* 
+import util.*
 
 
 object displayplacer extends Tool("displayplacer"):
 
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "displayplacer v"
-    runText("--version") match
-      case "" => InstalledVersion.Absent
-      case v =>
-        InstalledVersion.Version(
-          v.linesIterator
-            .find(_.startsWith(versionLinePrefix))
-            .get
-            .stripPrefix(versionLinePrefix)
-            .split(" ")
-            .head,
-        )
+    Try(runText("--version")) match
+      case Success(v) =>
+        Some(v).filter(_.contains(versionLinePrefix)).map(_.trim) match
+          case None => InstalledVersion.NA
+          case Some(v) =>
+            InstalledVersion.Version(
+              v.linesIterator
+                .find(_.startsWith(versionLinePrefix))
+                .get
+                .stripPrefix(versionLinePrefix)
+                .split(" ")
+                .head,
+            )
+      case _ => InstalledVersion.Absent
 
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.tap("jakehilborn/jakehilborn")
