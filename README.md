@@ -102,7 +102,29 @@ Hopefully the code is simple enough to be self-explanatory, but here is a quick 
 
 ## Future work
 
+### `virtualbox`
+
 ### `podman`
+
+### `jq`
+
+### `nvm`
+
+### `node`
+
+### `jenv`
+
+### `aws-cli`
+
+### `aws-vault`
+
+### `jira-cli`
+
+### `slack`
+
+### `slack-cli`
+
+### Linux & Windows support
 
 ### Intentions
 
