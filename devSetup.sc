@@ -15,6 +15,8 @@ installIfNeeded(
     fig,
     //vscode is the editor being used for development of this project
     vscode,
+    //virtualbox for running VMs
+    virtualbox,
 )
 vscode.installExtensionsIfNeeded(
     vscode.copilotExtension,

@@ -79,3 +79,13 @@ object vscode extends Tool("code") with ExtensionManagement:
   override def installExtensions(extensions: ToolExtension*): Unit =
     println(s"Installing vscode extensions: ${extensions.map(_.extensionId).mkString(", ")}")
     run("--install-extension" :: extensions.map(_.extensionId).toList)
+
+object virtualbox extends Tool("virtualbox"):
+  override def install(requiredVersion: RequiredVersion): Unit =
+    brew.installCask(name)
+  // instead of --version, we need to call a different command: vboxmanage --version
+  override def installedVersion(): InstalledVersion =
+    Try(os.proc("vboxmanage", "--version").callText()) match
+      case Success(v) =>
+        InstalledVersion.Version(v.linesIterator.next().trim())
+      case _ => InstalledVersion.Absent

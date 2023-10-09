@@ -178,9 +178,9 @@ trait Tool(
     case _ => InstalledVersion.Absent
   // TODO think about escaping the arguments
   def callAsString(args: String*) =
-    s"$name ${args.mkString("'", "' '", "'")}"
+    s"$name ${args.mkString(" ")}"
   def callAsString(args: List[String]) =
-    s"$name ${args.mkString("'", "' '", "'")}"
+    s"$name ${args.mkString(" ")}"
   def run(args: List[String]) =
     os.proc(name, args).call()
   def run(args: String*) =
@@ -333,10 +333,10 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
     val homebrewInstaller =
       curl get "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
     bash execute homebrewInstaller
-  def installFormula(formula: String) = run("install", formula)
-  def installCask(formula: String)    = run("install", "--cask", formula)
-  def tap(tap: String)                = run("tap", tap)
-  def upgradeFormula(formula: String) = run("upgrade", formula)
+  def installFormula(formula: String) = runVerbose("install", formula)
+  def installCask(formula: String)    = runVerbose("install", "--cask", formula)
+  def tap(tap: String)                = runVerbose("tap", tap)
+  def upgradeFormula(formula: String) = runVerbose("upgrade", formula)
 
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
