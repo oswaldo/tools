@@ -3,6 +3,7 @@
 
 import os.*
 import core.*
+import util.*
 
 object llvm extends Tool("llvm-gcc"):
   override def install(requiredVersion: RequiredVersion): Unit =
@@ -47,6 +48,34 @@ object iterm2 extends Tool("iterm2"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask(name)
 
-object vscode extends Tool("code"):
+object fig extends Tool("fig")
+
+object vscode extends Tool("code") with ExtensionManagement:
+  val copilotExtension     = ToolExtension("GitHub.copilot")
+  val copilotChatExtension = ToolExtension("GitHub.copilot-chat")
+  val materialIconTheme    = ToolExtension("PKief.material-icon-theme")
+  val scalaLangExtension   = ToolExtension("scala-lang.scala")
+  val scalametalsExtension = ToolExtension("scalameta.metals")
+  val vscodeIconsExtension = ToolExtension("vscode-icons-team.vscode-icons")
+  override val knownExtensions = List(
+    copilotExtension,
+    copilotChatExtension,
+    materialIconTheme,
+    scalaLangExtension,
+    scalametalsExtension,
+    vscodeIconsExtension,
+  )
+    .map(e => e.extensionId -> e)
+    .toMap
+  override def installedVersion(): InstalledVersion =
+    Try(runText("--version")) match
+      case Success(v) =>
+        InstalledVersion.Version(v.linesIterator.next().trim())
+      case _ => InstalledVersion.Absent
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask("visual-studio-code")
+  override def installedExtensionIds(): Set[String] =
+    runLines("--list-extensions").toSet
+  override def installExtensions(extensions: ToolExtension*): Unit =
+    println(s"Installing vscode extensions: ${extensions.map(_.extensionId).mkString(", ")}")
+    run("--install-extension" :: extensions.map(_.extensionId).toList)

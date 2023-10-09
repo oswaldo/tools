@@ -20,9 +20,6 @@ installIfNeeded(
     //llvm if you want to play with scala native
     // llvm,
 
-    //vscode is the editor being used for development of this project
-    // vscode,
-
     //totally recommended for a better terminal experience
     // spaceshipPrompt,
     // iterm2,
