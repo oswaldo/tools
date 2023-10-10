@@ -214,7 +214,7 @@ trait ExtensionManagement:
     knownExtensions.getOrElse(id, new ToolExtension(id) {})
   }
   // the key is the extension id. the value is the extension itself
-  // having the knownExtensions map allows us to return a predefined instance containing the known extension dependencies, which might not be managed by the extencion itself, having to be installed by the usual means in this project
+  // having the knownExtensions map allows us to return a predefined instance containing the known extension dependencies, which might not be managed by the extension itself, having to be installed by the usual means in this project
   def knownExtensions: Map[String, ToolExtension]
   // install extensions if needed converting the string to the known extension or instancing one if it's not known
   def installExtensionsByIdIfNeeded(extensionIds: String*): Unit =
@@ -267,6 +267,18 @@ object pkgutil extends BuiltInTool("pkgutil"):
       Some(info.trim()).filter(_.nonEmpty)
     case _ => None
 
+object shasum extends BuiltInTool("shasum"):
+  def sha256sum(file: Path) = runText("-a", "256", file.toString).split(" ").head
+  def sha256sumCheck(file: Path, expectedSum: String) =
+    val result = sha256sum(file) == expectedSum
+    if result then println(s"sha256sum check passed")
+    else println(s"sha256sum check failed (expected: $expectedSum, actual: ${sha256sum(file)})")
+    result
+
+object uname extends BuiltInTool("uname"):
+  def os()   = runText("-s")
+  def arch() = runText("-m")
+
 object xcodeSelect extends Tool("xcode-select"):
   override def path(): Option[Path] = Try(runText("-p")) match
     case Success(path) if path.nonEmpty => Some(Path(path)).filter(os.exists)
@@ -308,6 +320,12 @@ object xcodeSelect extends Tool("xcode-select"):
     // TODO think about some custom exceptions but preferably refactor so we can return something that represents the fact of a failed upgrade, so maybe other components can react to it and maybe even try an alternative without the verbosity of exception handling
     throw new Exception("Script Aborted: obsolete xcode-select needs to be removed first")
 
+case class DownloadableFile(name: String, url: String, expectedSha256sum: Option[String])
+
+object DownloadableFile:
+  def apply(name: String, url: String, expectedSha256sum: String): DownloadableFile =
+    DownloadableFile(name, url, Some(expectedSha256sum))
+
 object curl extends Tool("curl"):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "curl "
@@ -323,6 +341,55 @@ object curl extends Tool("curl"):
             .head,
         )
   def get(url: String) = runText("-fsSL", url)
+  def download(url: String, destination: Path): Unit =
+    runVerbose("-fsSL", "-o", destination.toString, url)
+  def download(downloadable: DownloadableFile, destinationPath: Option[Path] = None): Path =
+    // downloads to a downloads folder in the project structure if the user doesn't care about the destination
+    val defaultPath = os.pwd / "downloads"
+    val destination = destinationPath.getOrElse(defaultPath / downloadable.name)
+    val actualPath  = destination / os.up
+    if !os.exists(destination) then
+      println(s"Downloading ${downloadable.name} to $destination")
+      os.makeDir.all(actualPath)
+      download(downloadable.url, destination)
+    else println(s"${downloadable.name} already downloaded to $destination")
+    downloadable.expectedSha256sum.foreach { expectedSum =>
+      if !shasum.sha256sumCheck(destination, expectedSum) then throw new Exception("sha256sum check failed")
+    }
+    destination
+
+object hdiutil extends BuiltInTool("hdiutil"):
+  // the idea behind calling mount and unmount is that we can have a similar looking code for other tools with similar functionality, as in practice that is the most common vocabulary, independent if mac or something else, independent of physical or virtual
+  def mount(dmg: Path): Path =
+    val volumePathPrefix = "/Volumes/"
+    Path(
+      runText("attach", dmg.toString).linesIterator
+        .filter(_.contains(volumePathPrefix))
+        .map(line => volumePathPrefix + line.split(volumePathPrefix).last)
+        .next(),
+    )
+  def unmount(volume: Path) = run("detach", volume.toString)
+
+object installer extends BuiltInTool("installer"):
+  def installPkg(pkg: Path): Unit = os.proc("sudo", "installer", "-pkg", pkg.toString, "-target", "/").call()
+  def installDmg(dmgFilePath: Path, pkgFileName: String): Unit =
+    Using(DmgFile(dmgFilePath)) { dmg =>
+      val volume = dmg.volume
+      println(s"Installing $dmgFilePath (volume: $volume)")
+      installer.installPkg(volume / pkgFileName)
+    } match
+      case Success(_) =>
+        println(s"Successfully installed $dmgFilePath")
+      case Failure(e) =>
+        println(s"Failed to install $dmgFilePath: $e")
+
+//code needed to work with scala's Using ( Scala's alternative to try with resources) so we don't need to worry about mounting and unmounting the dmg file:
+case class DmgFile(dmg: Path) extends AutoCloseable:
+  println(s"Mounting $dmg")
+  val volume = hdiutil.mount(dmg)
+  override def close() =
+    println(s"Unmounting $dmg (volume: $volume))")
+    hdiutil.unmount(volume)
 
 object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   override def installedVersion(): InstalledVersion =

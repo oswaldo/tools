@@ -82,8 +82,22 @@ object vscode extends Tool("code") with ExtensionManagement:
 
 object virtualbox extends Tool("virtualbox"):
   override def install(requiredVersion: RequiredVersion): Unit =
-    brew.installCask(name)
-  // instead of --version, we need to call a different command: vboxmanage --version
+    val arch = uname.arch()
+    println(s"Installing $name for arch $arch")
+    arch match
+      case "arm64" =>
+        val downloadedFilePath = curl.download(
+          DownloadableFile(
+            "VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
+            "https://download.virtualbox.org/virtualbox/7.0.8/VirtualBox-7.0.8_BETA4-156879-macOSArm64.dmg",
+            "7c24aa0d40ae65cde24d1fba5a2c2fe49a6f6c7d42b01cf3169a7e3459b80b8d",
+          ),
+        )
+        installer.installDmg(downloadedFilePath, "VirtualBox.pkg")
+      case _ =>
+        brew.installFormula("virtualbox")
+
+  // instead of `virtualbox --version`, we need to call a different command (`vboxmanage --version`) otherwise we get the desktop app to startup and freeze the script
   override def installedVersion(): InstalledVersion =
     Try(os.proc("vboxmanage", "--version").callText()) match
       case Success(v) =>
