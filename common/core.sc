@@ -1,4 +1,4 @@
-//> using dep "com.lihaoyi::os-lib::0.9.1"
+//> using toolkit latest
 //> using dep "io.kevinlee::just-semver::0.12.0"
 
 import os.*
@@ -13,7 +13,7 @@ def arg[T](i: Int, parser: (String) => Option[T], default: => T): T =
 
 extension (p: proc) def callText() = p.call().out.text().trim()
 
-extension (p: proc) def callLines() = p.call().out.lines()
+extension (p: proc) def callLines() = p.call().out.lines().toList
 
 def which(name: String): Option[Path] =
   Try(os.proc("which", name).callText()) match
@@ -181,6 +181,8 @@ trait Tool(
     s"$name ${args.mkString(" ")}"
   def callAsString(args: List[String]) =
     s"$name ${args.mkString(" ")}"
+  def tryCallLines(args: String*) =
+    Try(os.proc(name, args).callLines())
   def run(args: List[String]) =
     os.proc(name, args).call()
   def run(args: String*) =
@@ -195,6 +197,8 @@ trait Tool(
     os.proc(name, args).callText()
   def runLines(args: String*) =
     os.proc(name, args).callLines()
+  def tryRunLines(args: String*) =
+    Try(runLines(args*))
 
 case class ToolExtension(
   val extensionId: String,
@@ -268,7 +272,9 @@ object pkgutil extends BuiltInTool("pkgutil"):
     case _ => None
 
 object shasum extends BuiltInTool("shasum"):
-  def sha256sum(file: Path) = runText("-a", "256", file.toString).split(" ").head
+  def sha256sum(file: Path) =
+    println(s"Calculating sha256sum for $file")
+    runText("-a", "256", file.toString).split(" ").head
   def sha256sumCheck(file: Path, expectedSum: String) =
     val result = sha256sum(file) == expectedSum
     if result then println(s"sha256sum check passed")

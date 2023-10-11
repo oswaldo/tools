@@ -1,9 +1,10 @@
-//> using dep "com.lihaoyi::os-lib::0.9.1"
+//> using toolkit latest
 //> using file "common/core.sc"
 
 import os.*
 import core.*
 import util.*
+import java.util.UUID
 
 object llvm extends Tool("llvm-gcc"):
   override def install(requiredVersion: RequiredVersion): Unit =
@@ -50,6 +51,32 @@ object iterm2 extends Tool("iterm2"):
 
 object fig extends Tool("fig")
 
+object p7zip extends Tool("7za"):
+  override def installedVersion(): InstalledVersion =
+    // the command returns multiple lines, but the one we want looks like "p7zip Version 17.05 (locale=utf8,Utf16=on,HugeFiles=on,64 bits,10 CPUs LE)"
+    def parseVersionLine(line: String) =
+      line.split(" ").toList match
+        case _ :: "Version" :: v :: _ => Some(v)
+        case _                        => None
+    def parseVersion(lines: List[String]) =
+      lines
+        .map(parseVersionLine)
+        .collectFirst { case Some(v) => v }
+        .getOrElse("") match
+        case "" => InstalledVersion.Absent
+        case v  => InstalledVersion.Version(v)
+    tryRunLines("-version") match
+      // 7za is a funny command that outputs the version and then exits with an error code 🤷🏽‍♂️
+      // the Absent case is only when the output doesn't contain the version line
+      case Success(v) =>
+        parseVersion(v)
+      case Failure(e) =>
+        parseVersion(e.getMessage().linesIterator.toList)
+  override def install(requiredVersion: RequiredVersion): Unit =
+    brew.installFormula("p7zip")
+  def extract(archive: Path, destination: Path): Unit =
+    runVerbose("x", archive.toString, s"-o${destination.toString}")
+
 object vscode extends Tool("code") with ExtensionManagement:
   val copilotExtension     = ToolExtension("GitHub.copilot")
   val copilotChatExtension = ToolExtension("GitHub.copilot-chat")
@@ -79,8 +106,9 @@ object vscode extends Tool("code") with ExtensionManagement:
   override def installExtensions(extensions: ToolExtension*): Unit =
     println(s"Installing vscode extensions: ${extensions.map(_.extensionId).mkString(", ")}")
     run("--install-extension" :: extensions.map(_.extensionId).toList)
+end vscode
 
-object virtualbox extends Tool("virtualbox"):
+object virtualbox extends Tool("vboxmanage"):
   override def install(requiredVersion: RequiredVersion): Unit =
     val arch = uname.arch()
     println(s"Installing $name for arch $arch")
@@ -97,9 +125,27 @@ object virtualbox extends Tool("virtualbox"):
       case _ =>
         brew.installFormula("virtualbox")
 
-  // instead of `virtualbox --version`, we need to call a different command (`vboxmanage --version`) otherwise we get the desktop app to startup and freeze the script
   override def installedVersion(): InstalledVersion =
-    Try(os.proc("vboxmanage", "--version").callText()) match
+    tryRunLines("--version") match
       case Success(v) =>
-        InstalledVersion.Version(v.linesIterator.next().trim())
+        InstalledVersion.Version(v.head.trim())
       case _ => InstalledVersion.Absent
+
+  case class Vm(name: String, uuid: UUID)
+
+  def listVms(): List[Vm] =
+    tryRunLines("list", "vms") match
+      case Success(lines) =>
+        lines.map { line =>
+          val name = line.split("\"").toList match
+            case _ :: name :: _ => name
+            case _              => ""
+          val uuid = line.split("{").toList match
+            case _ :: uuid :: _ => uuid
+            case _              => ""
+          Vm(name, UUID.fromString(uuid))
+        }
+      case _ => Nil
+
+  def createVm() = ???
+end virtualbox

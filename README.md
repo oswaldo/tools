@@ -126,7 +126,9 @@ Hopefully the code is simple enough to be self-explanatory, but here is a quick 
 
 ### `slack-cli`
 
-### Linux & Windows support
+### Linux support
+
+### Windows support
 
 ### Intentions
 

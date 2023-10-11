@@ -4,7 +4,7 @@
 //> using file "../common/core.sc"
 //> using file "../common/tools.sc"
 //> using file "osboxes.sc"
-//> using dep "com.lihaoyi::os-lib::0.9.1"
+//> using toolkit latest
 
 import core.*
 import tools.*
