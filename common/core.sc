@@ -348,7 +348,7 @@ object curl extends Tool("curl"):
         )
   def get(url: String) = runText("-fsSL", url)
   def download(url: String, destination: Path): Unit =
-    runVerbose("-fsSL", "-o", destination.toString, url)
+    runVerbose("-C", "-", "-fSL", "-o", destination.toString, url)
   def download(downloadable: DownloadableFile, destinationPath: Option[Path] = None): Path =
     // downloads to a downloads folder in the project structure if the user doesn't care about the destination
     val defaultPath = os.pwd / "downloads"
