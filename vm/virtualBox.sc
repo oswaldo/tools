@@ -151,6 +151,32 @@ object virtualBox extends Tool("vboxmanage"):
       diskPath.toString(),
     )
 
+  def configureDvd(vm: RegisteredVm) =
+    runVerbose(
+      "storagectl",
+      vm.name,
+      "--name",
+      "IDE Controller",
+      "--add",
+      "ide",
+      "--controller",
+      "PIIX4",
+    )
+    runVerbose(
+      "storageattach",
+      vm.name,
+      "--storagectl",
+      "IDE Controller",
+      "--port",
+      "0",
+      "--device",
+      "0",
+      "--type",
+      "dvddrive",
+      "--medium",
+      "emptydrive",
+    )
+
   def configureBootOrder(vm: RegisteredVm) =
     runVerbose(
       "modifyvm",
@@ -195,6 +221,7 @@ object virtualBox extends Tool("vboxmanage"):
       configureNetwork(vm)
       configureGraphics(vm)
       attachDisk(vm, image)
+      configureDvd(vm)
       configureBootOrder(vm)
       vm
     }
