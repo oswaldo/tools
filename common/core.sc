@@ -1,19 +1,30 @@
 //> using toolkit latest
-//> using dep "io.kevinlee::just-semver::0.12.0"
+//> using dep "io.kevinlee::just-semver::0.13.0"
 
 import os.*
 import util.*
 
-def arg[T](i: Int, parser: (String) => Option[T], default: => T): T =
+def arg[T](i: Int, default: => T, parser: (String) => Option[T])(using args: Array[String]): T =
   Try {
-    parser(args(i))
+    if args.length <= i then None
+    else parser(args(i))
   } match
     case Success(Some(value)) => value
-    case _                    => default
+    case e =>
+      default
 
-extension (p: proc) def callText() = p.call().out.text().trim()
+def arg(i: Int, default: => String)(using args: Array[String]): String =
+  arg(i, default, Some(_))
 
-extension (p: proc) def callLines() = p.call().out.lines().toList
+def argRequired[T](i: Int, missingMessage: => String, parser: (String) => T)(using args: Array[String]): T =
+  arg(i, throw new Exception(s"Arg $i: $missingMessage"), s => Some(parser(s)))
+
+def argRequired(i: Int, missingMessage: => String)(using args: Array[String]): String =
+  argRequired(i, missingMessage, identity)
+
+extension (p: proc) def callText()(using wd: Path = os.pwd) = p.call(cwd = wd).out.text().trim()
+
+extension (p: proc) def callLines()(using wd: Path = os.pwd) = p.call(cwd = wd).out.lines().toList
 
 def which(name: String): Option[Path] =
   Try(os.proc("which", name).callText()) match
@@ -190,12 +201,12 @@ trait Tool(
   def runVerbose(args: List[String]) =
     println(s"running ${callAsString(args)}")
     os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
-  def runVerbose(args: String*) =
+  def runVerbose(args: String*)(using wd: Path = os.pwd) =
     println(s"running ${callAsString(args*)}")
-    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
+    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
   def runText(args: String*): String =
     os.proc(name, args).callText()
-  def runLines(args: String*) =
+  def runLines(args: String*)(using wd: Path = os.pwd) =
     os.proc(name, args).callLines()
   def tryRunLines(args: String*) =
     Try(runLines(args*))
@@ -437,9 +448,57 @@ object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredV
     runVerbose("install", "completions")
 
 object git extends Tool("git"):
+
+  case class Remote(name: String, url: String)
+
+  private def parseRemoteLine(line: String): Remote =
+    val parts = line.split("\\s+")
+    Remote(parts(0), parts(1))
+
   def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
-    run("clone", repo, path.toString)
+    runVerbose("clone", repo, path.toString)
+  def remoteList()(using wd: Path = os.pwd) =
+    runLines("remote", "-v")
+      .filter(_.trim.endsWith("(fetch)"))
+      .map(parseRemoteLine)
+  def remoteAdd(remoteName: String, remoteUrl: String)(using wd: Path = os.pwd) =
+    runVerbose("remote", "add", remoteName, remoteUrl)
+  def subtreeAdd(folder: RelPath, remoteUrl: String, branch: String)(using wd: Path = os.pwd) =
+    runVerbose("subtree", "add", "--prefix", folder.toString, remoteUrl, branch, "--squash")
+  def subtreePull(folder: RelPath, remoteUrl: String, branch: String)(using wd: Path = os.pwd) =
+    runVerbose("subtree", "pull", "--prefix", folder.toString, remoteUrl, branch, "--squash")
+  def githubUserRepoUrl(githubUserAndRepo: String) = s"https://github.com/$githubUserAndRepo.git"
   def hubClone(githubUserAndRepo: String)(
     path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
+  )(using wd: Path = os.pwd) =
+    clone(githubUserRepoUrl(githubUserAndRepo))(path)
+  def hubRemoteAdd(remoteName: String, githubUserAndRepo: String)(using wd: Path = os.pwd) =
+    remoteAdd(remoteName, githubUserRepoUrl(githubUserAndRepo))
+  def hubSubtreeAdd(folder: RelPath, githubUserAndRepo: String, branch: String)(using wd: Path = os.pwd) =
+    subtreeAdd(folder, githubUserRepoUrl(githubUserAndRepo), branch)
+  def hubSubtreePull(folder: RelPath, githubUserAndRepo: String, branch: String)(using wd: Path = os.pwd) =
+    subtreePull(folder, githubUserRepoUrl(githubUserAndRepo), branch)
+
+  val thisRepo = "oswaldo/tools"
+  // considering that the localRepoFolder is an already cloned or initialized git folder, cd into it and install the branch of the remoteRepo as a subtree
+  def installSubtree(
+    localRepoFolder: Path,
+    subtreeFolder: RelPath,
+    remoteName: String,
+    remoteUrl: String,
+    branch: String = "main",
   ) =
-    clone(s"https://github.com/$githubUserAndRepo.git")(path)
+    given wd: Path = localRepoFolder
+    if !os.exists(localRepoFolder) then throw new Exception(s"Local repo folder $localRepoFolder does not exist")
+    else println(s"Using existing $localRepoFolder")
+    println(s"Adding $remoteUrl as a subtree of $localRepoFolder")
+    println(s"Checking if $remoteName ($remoteUrl) remote exists...")
+    if !remoteList().exists(_.name == remoteName) then
+      println(s"Adding $remoteName ($remoteUrl) remote...")
+      remoteAdd(remoteName, remoteUrl)
+    else
+    // abort with an exception if the remote url is different
+    if remoteList().find(_.name == remoteName).get.url != remoteUrl then
+      throw new Exception(s"Remote $remoteName already exists with a different url")
+    else println(s"$remoteName ($remoteUrl) remote already exists")
+    subtreeAdd(subtreeFolder, remoteUrl, branch)

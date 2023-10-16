@@ -1,9 +1,9 @@
-# Tools
+# oztools
 
 > _Here be dragons 🐉_
 > This is a first draft / work in progress / flow of thought, and at the moment should not be considered as ready for production.
 > Lots of totally untested code ahead.
-> The scripts are expected to run in YOLO mode, installing things with no confirmation.
+> The scripts are expected to run in YOLO mode, creating files as needed, installing and upgrading things with no confirmation, from small tools to full blown virtual machines (you could work with one if you want to play it safer).
 > You have been warned 🤓
 
 When bash scripts go a bit beyond the trivial, they usually become a maintenance nightmare.
@@ -92,6 +92,26 @@ Suppose we want to add support to git so we can conveniently use it in your scri
 
 Hopefully the code is simple enough to be self-explanatory, but here is a quick overview of some relevant tools already supported.
 
+### "Itself"
+
+By reusing other tools wrapped by this project, it is possible to deliver self-contained, self-documented, easy to use scripts and easy to maintain scripts, covering missing features from the original tools or creating higher level abstractions across them.
+
+#### `./common/scripts/gitInstallSubtree.p.sc`
+
+This script expects 5 arguments:
+
+1. Some clean, local git repository folder
+2. A name for the subfolder to where the subtree will be installed
+3. A remote name for the subtree
+4. A remote url for the subtree
+5. The branch name for the subtree (this is optional, if not provided it will default to `main`)
+
+For instance, considering a project called `my-project` with a git repository in `~/git/my-project`, you could run the following command to install this repo as a subtree in a folder called `tools`:
+
+```bash
+./common/scripts/gitInstallSubtree.p.sc ~/git/my-project tools oztools https://github.com/oswaldo/tools.git
+```
+
 ### `brew`
 
 ### `curl`
@@ -100,11 +120,13 @@ Hopefully the code is simple enough to be self-explanatory, but here is a quick 
 
 ### `git`
 
-## Future work
-
 ### `virtualbox`
 
-#### Reusable Snapshots
+## Future work
+
+#### Reusable VM Snapshots
+
+### `sbt`
 
 ### `podman`
 

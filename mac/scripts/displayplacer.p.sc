@@ -1,4 +1,4 @@
-#!/usr/bin/env -S scala-cli -S 3
+#!/usr/bin/env -S scala-cli shebang -S 3
 
 //> using scala 3.3.1
 //> using file "../../common/core.sc"
@@ -10,4 +10,5 @@ import tools.*
 import displayplacer.*
 
 displayplacer.installIfNeeded()
-displayplacer.placeBuiltIn(arg(0, displayplacer.Position.fromString, displayplacer.Position.Right))
+given Array[String] = args
+displayplacer.placeBuiltIn(arg(0, displayplacer.Position.Right, displayplacer.Position.fromString))
