@@ -109,7 +109,7 @@ This script expects 5 arguments:
 For instance, considering a project called `my-project` with a git repository in `~/git/my-project`, you could run the following command to install this repo as a subtree in a folder called `tools`:
 
 ```bash
-./common/scripts/gitInstallSubtree.p.sc ~/git/my-project tools oztools https://github.com/oswaldo/tools.git
+./common/scripts/gitInstallSubtree.p.sc ~/git/my-project oztools "subtree-oztools" https://github.com/oswaldo/tools.git
 ```
 
 ### `brew`

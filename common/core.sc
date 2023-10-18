@@ -1,8 +1,10 @@
 //> using toolkit latest
 //> using dep "io.kevinlee::just-semver::0.13.0"
+//> using dep "com.lihaoyi::pprint::0.8.1"
 
 import os.*
 import util.*
+import pprint.*
 
 def arg[T](i: Int, default: => T, parser: (String) => Option[T])(using args: Array[String]): T =
   Try {
@@ -22,17 +24,130 @@ def argRequired[T](i: Int, missingMessage: => String, parser: (String) => T)(usi
 def argRequired(i: Int, missingMessage: => String)(using args: Array[String]): String =
   argRequired(i, missingMessage, identity)
 
-extension (p: proc) def callText()(using wd: Path = os.pwd) = p.call(cwd = wd).out.text().trim()
+extension (p: proc)
+  def callText()(using wd: Path | NotGiven[Path]): String =
+    wd match
+      case wd: Path => p.call(cwd = wd).out.text().trim()
+      case _        => p.call().out.text().trim()
 
-extension (p: proc) def callLines()(using wd: Path = os.pwd) = p.call(cwd = wd).out.lines().toList
+extension (p: proc)
+  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
+    wd match
+      case wd: Path => p.call(cwd = wd).out.lines().toList
+      case _        => p.call().out.lines().toList
+
+extension (p: proc)
+  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
+    wd match
+      case wd: Path => p.call(cwd = wd)
+      case _        => p.call()
+
+extension (p: proc)
+  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
+    // p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
+    wd match
+      case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
+      case _        => p.call(stdout = os.Inherit, stderr = os.Inherit)
 
 def which(name: String): Option[Path] =
   Try(os.proc("which", name).callText()) match
     case Success(path) => Some(Path(path))
     case _             => None
 
-def appendLine(file: Path, line: String) =
-  os.write.append(file, line + "\n")
+def appendLine(file: Path, newLine: String) =
+  os.write.append(file, newLine + "\n")
+
+def insertBeforeLine(file: Path, line: String, newLine: String) =
+  if !os.exists(file) then os.write(file, newLine + "\n")
+  else
+    val lines           = os.read.lines(file).toList
+    val (before, after) = lines.span(_ != line)
+    val newLines        = before ++ (newLine :: after)
+    os.write.over(file, newLines.mkString("\n") + "\n")
+
+def insertBeforeIfMissing(file: Path, line: String, newLine: String) =
+  if !os.exists(file) || !os.read.lines(file).contains(newLine) then insertBeforeLine(file, line, newLine)
+
+//not really used for now but keeping it around for reference and maybe future use
+def linkScripts(scriptsFolder: Path, linksFolder: Path) =
+  os.list(scriptsFolder)
+    .filter(_.last.endsWith(".p.sc"))
+    .foreach { script =>
+      val scriptName = script.last
+      val linkName   = scriptName.stripSuffix(".p.sc")
+      val link       = linksFolder / linkName
+      if !os.exists(link) then
+        println(s"Linking $scriptName to $link")
+        os.symlink(link, script)
+      else println(s"$scriptName already linked to $link")
+    }
+
+def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
+  val subshellWrapper = os
+    .read(os.pwd / "common" / "subshellWrapperTemplate.sc")
+    .replace("core.sc", (os.pwd / "common" / "core.sc").toString)
+    .replace(
+      "os.pwd",
+      s"os.root / os.RelPath(\"${os.pwd.toString
+          // dropping the first (now redundant) slash
+          .drop(1)}\")",
+    )
+  os.list(scriptsFolder)
+    .filter(_.last.endsWith(".p.sc"))
+    .foreach { script =>
+      val scriptName = script.last
+      val wrapper    = wrappersFolder / scriptName.stripSuffix(".p.sc")
+      if !os.exists(wrapper) then
+        println(s"Wrapping $scriptName in $wrapper")
+        val specificWrapper = subshellWrapper
+          .replace("echo subshell call", s"./${script.relativeTo(os.pwd).toString}")
+        os.write(wrapper, specificWrapper)
+        os.perms.set(wrapper, "rwxr-xr-x")
+      else println(s"$scriptName already wrapped in $wrapper")
+    }
+
+val WrappersFolder = os.home / "oztools"
+
+def addWrappersFolderToPath() =
+  val path = System.getenv("PATH")
+  if !path.contains(WrappersFolder.toString) then
+    println(s"Adding $WrappersFolder to the PATH")
+    val profileFiles = List(".bash_profile", ".profile", ".zprofile").map(os.home / _).filter(os.exists)
+    val line         = s"export PATH=\"$$PATH:$WrappersFolder\""
+    profileFiles.foreach { profileFile =>
+      if os.read.lines(profileFile).contains(line) then println(s"$profileFile already contained the export PATH line")
+      else
+        val backupFile         = profileFile / os.up / (profileFile.last + ".bak")
+        val backupFileNumber   = Iterator.from(1).find(i => !os.exists(backupFile / os.up / (backupFile.last + i))).get
+        val numberedBackupFile = backupFile / os.up / (backupFile.last + backupFileNumber)
+        os.copy(profileFile, numberedBackupFile)
+        println(s"Created backup of $profileFile in $numberedBackupFile")
+        insertBeforeIfMissing(
+          profileFile,
+          "# Fig post block. Keep at the bottom of this file.",
+          s"$line\n",
+        )
+        println(s"  !!! If you are in a shell affected by this change, start a new shell or run `source $profileFile`")
+    }
+    false
+  else
+    println(s"$WrappersFolder already in the PATH")
+    true
+
+def installWrappers() =
+  addWrappersFolderToPath()
+  val scriptFolders =
+    os.pwd / "common" / "scripts"
+    os.pwd / "mac" / "scripts"
+      :: Nil
+  println(
+    s"Adding to folder $WrappersFolder subshell wrapper scripts for the ones in the following folders:${scriptFolders
+        .mkString("\n  ", "\n  ", "")}",
+  )
+  os.makeDir.all(WrappersFolder)
+  scriptFolders.foreach { folder =>
+    wrapScripts(folder, WrappersFolder)
+  }
 
 trait VersionCompatibilityProperties:
   def installedVersion: InstalledVersion
@@ -118,6 +233,8 @@ trait Artifact:
   val name: String
   val dependencies: List[Dependency]       = List.empty
   def installedVersion(): InstalledVersion = InstalledVersion.NA
+  def isInstalled(): Boolean               = installedVersion() != InstalledVersion.Absent
+  def isAbsent(): Boolean                  = installedVersion() == InstalledVersion.Absent
   def installDependencies(): Unit =
     println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
@@ -188,27 +305,26 @@ trait Tool(
       Some(v).filter(_.nonEmpty).map(InstalledVersion.Version(_)).getOrElse(InstalledVersion.NA)
     case _ => InstalledVersion.Absent
   // TODO think about escaping the arguments
-  def callAsString(args: String*) =
+  def callAsString(args: String*): String =
     s"$name ${args.mkString(" ")}"
-  def callAsString(args: List[String]) =
+  def callAsString(args: List[String]): String =
     s"$name ${args.mkString(" ")}"
-  def tryCallLines(args: String*) =
+  def tryCallLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
     Try(os.proc(name, args).callLines())
-  def run(args: List[String]) =
-    os.proc(name, args).call()
-  def run(args: String*) =
-    os.proc(name, args).call()
-  def runVerbose(args: List[String]) =
-    println(s"running ${callAsString(args)}")
-    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
-  def runVerbose(args: String*)(using wd: Path = os.pwd) =
+  def run(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
+    run(args*)
+  def run(args: String*)(using wd: Path | NotGiven[Path]): Unit =
+    os.proc(name, args).callUnit()
+  def runVerbose(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
+    runVerbose(args*)
+  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
     println(s"running ${callAsString(args*)}")
-    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
-  def runText(args: String*): String =
+    os.proc(name, args).callVerbose()
+  def runText(args: String*)(using wd: Path | NotGiven[Path]): String =
     os.proc(name, args).callText()
-  def runLines(args: String*)(using wd: Path = os.pwd) =
+  def runLines(args: String*)(using wd: Path | NotGiven[Path]): List[String] =
     os.proc(name, args).callLines()
-  def tryRunLines(args: String*) =
+  def tryRunLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
     Try(runLines(args*))
 
 case class ToolExtension(
@@ -261,8 +377,8 @@ case class BuiltInTool(
 
 trait Shell:
   this: Tool =>
-  def execute(script: String) = run("-c", s"$script")
-  def executeVerbose(script: String) =
+  def execute(script: String)(using wd: Path | NotGiven[Path]) = run("-c", s"$script")
+  def executeVerbose(script: String)(using wd: Path | NotGiven[Path]) =
     runVerbose("-c", s"$script")
 
 trait Font(
@@ -490,6 +606,7 @@ object git extends Tool("git"):
   ) =
     given wd: Path = localRepoFolder
     if !os.exists(localRepoFolder) then throw new Exception(s"Local repo folder $localRepoFolder does not exist")
+    // TODO also check if it's a initialized git repo, with at least one commit, otherwise git subtree add will fail with "ambiguous argument 'HEAD': unknown revision or path not in the working tree."
     else println(s"Using existing $localRepoFolder")
     println(s"Adding $remoteUrl as a subtree of $localRepoFolder")
     println(s"Checking if $remoteName ($remoteUrl) remote exists...")
