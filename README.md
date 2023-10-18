@@ -112,6 +112,10 @@ For instance, considering a project called `my-project` with a git repository in
 ./common/scripts/gitInstallSubtree.p.sc ~/git/my-project tools oztools https://github.com/oswaldo/tools.git
 ```
 
+### `aws`
+
+### `aws-sso`
+
 ### `brew`
 
 ### `curl`
@@ -137,10 +141,6 @@ For instance, considering a project called `my-project` with a git repository in
 ### `node`
 
 ### `jenv`
-
-### `aws-cli`
-
-### `aws-vault`
 
 ### `jira-cli`
 

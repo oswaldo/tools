@@ -26,6 +26,10 @@ extension (p: proc) def callText()(using wd: Path = os.pwd) = p.call(cwd = wd).o
 
 extension (p: proc) def callLines()(using wd: Path = os.pwd) = p.call(cwd = wd).out.lines().toList
 
+extension (p: proc)
+  def callLinesVerbose()(using wd: Path = os.pwd) =
+    p.call(cwd = wd).out.lines().toList
+
 def which(name: String): Option[Path] =
   Try(os.proc("which", name).callText()) match
     case Success(path) => Some(Path(path))
@@ -99,6 +103,7 @@ object RequiredVersion:
     artifacts.map(Dependency(_, RequiredVersion.AtLeast(version))).toList
 
 enum InstalledVersion:
+  // TODO think about verifying if the version is semver compatible, and if not, if it could be made compatible
   case Version(version: String)
   case Absent
   case NA
@@ -106,6 +111,18 @@ enum InstalledVersion:
     case Version(v) => v
     case Absent     => "Absent"
     case NA         => "NA"
+
+object InstalledVersion:
+  def parse(versionLinePrefix: String, tryLines: Try[List[String]]): InstalledVersion =
+    // potentially the first word after the prefix is the version, so we drop the prefix and take the first word
+    tryLines match
+      case Success(lines) =>
+        lines
+          .find(_.startsWith(versionLinePrefix))
+          .map(_.stripPrefix(versionLinePrefix).split("\\s+").head)
+          .map(Version(_))
+          .getOrElse(Absent)
+      case _ => Absent
 
 case class Dependency(artifact: Artifact, version: RequiredVersion):
   def installDependencies() = artifact.installDependencies()
@@ -170,6 +187,7 @@ trait Artifact:
 end Artifact
 
 def installIfNeeded(artifacts: Artifact*): Unit =
+  // TODO think about "merging" dependencies from the same package manager in a single call if possible, also considering redundant transitive dependencies
   RequiredVersion.any(artifacts*).foreach { d =>
     println("\n")
     d.installIfNeeded()
@@ -200,15 +218,17 @@ trait Tool(
     os.proc(name, args).call()
   def runVerbose(args: List[String]) =
     println(s"running ${callAsString(args)}")
-    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit)
+    os.proc(name, args).callLinesVerbose()
   def runVerbose(args: String*)(using wd: Path = os.pwd) =
     println(s"running ${callAsString(args*)}")
-    os.proc(name, args).call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
+    os.proc(name, args).callLinesVerbose()
+  def runText(args: List[String]): String =
+    os.proc(name, args).callText()
   def runText(args: String*): String =
     os.proc(name, args).callText()
   def runLines(args: String*)(using wd: Path = os.pwd) =
     os.proc(name, args).callLines()
-  def tryRunLines(args: String*) =
+  def tryRunLines(args: String*)(using wd: Path = os.pwd) =
     Try(runLines(args*))
 
 case class ToolExtension(
@@ -421,26 +441,12 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   def installCask(formula: String)    = runVerbose("install", "--cask", formula)
   def tap(tap: String)                = runVerbose("tap", tap)
   def upgradeFormula(formula: String) = runVerbose("upgrade", formula)
+  def formulaInfo(formula: String)    = runVerbose("info", formula)
 
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
     val versionLinePrefix = "Scala CLI version: "
-    Try(runText("--version")) match
-      case Success(v) =>
-        Some(v)
-          .filter(_.nonEmpty)
-          .map { v =>
-            InstalledVersion.Version(
-              v.linesIterator
-                .find(_.startsWith(versionLinePrefix))
-                .get
-                .stripPrefix(versionLinePrefix)
-                .split(" ")
-                .head,
-            )
-          }
-          .getOrElse(InstalledVersion.NA)
-      case _ => InstalledVersion.Absent
+    InstalledVersion.parse("Scala CLI version: ", tryRunLines("--version"))
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =
