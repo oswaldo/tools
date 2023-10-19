@@ -7,9 +7,6 @@
 import core.* 
 import os.*
 
-println(args.mkString(", "))
-println(args(0))
-
 given Array[String] = args
 val localRepoFolder = argRequired(0, "localRepoFolder is required!", os.Path(_))
 val subtreeFolder = argRequired(1, "subtreeFolder is required!", os.RelPath(_))

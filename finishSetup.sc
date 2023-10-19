@@ -25,3 +25,4 @@ installIfNeeded(
     // iterm2,
 )
 scalaCli.installCompletions()
+installWrappers()
