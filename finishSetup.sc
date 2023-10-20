@@ -25,4 +25,7 @@ installIfNeeded(
     // iterm2,
 )
 scalaCli.installCompletions()
-installWrappers()
+installWrappers(
+    os.pwd / "common" / "scripts",
+    os.pwd / "mac" / "scripts",
+)
