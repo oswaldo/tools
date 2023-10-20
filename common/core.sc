@@ -25,32 +25,48 @@ def argRequired(i: Int, missingMessage: => String)(using args: Array[String]): S
   argRequired(i, missingMessage, identity)
 
 extension (p: proc)
-  def callText()(using wd: Path | NotGiven[Path]): String =
-    wd match
-      case wd: Path => p.call(cwd = wd).out.text().trim()
-      case _        => p.call().out.text().trim()
-
-extension (p: proc)
   def callLines()(using wd: Path | NotGiven[Path]): List[String] =
     wd match
       case wd: Path => p.call(cwd = wd).out.lines().toList
       case _        => p.call().out.lines().toList
-
-extension (p: proc)
   def callUnit()(using wd: Path | NotGiven[Path]): Unit =
     wd match
       case wd: Path => p.call(cwd = wd)
       case _        => p.call()
-
-extension (p: proc)
+  def callText()(using wd: Path | NotGiven[Path]): String =
+    wd match
+      case wd: Path => p.call(cwd = wd).out.text().trim()
+      case _        => p.call().out.text().trim()
   def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
-    // p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
     wd match
       case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
       case _        => p.call(stdout = os.Inherit, stderr = os.Inherit)
 
+extension (commandWithArguments: List[String])
+  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
+    os.proc(commandWithArguments).callLines()
+  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
+    os.proc(commandWithArguments).callUnit()
+  def callText()(using wd: Path | NotGiven[Path]): String =
+    os.proc(commandWithArguments).callText()
+  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
+    os.proc(commandWithArguments).callVerbose()
+
+extension (commandWithArguments: String)
+  def splitCommandWithArguments(): List[String] =
+    // TODO think about improving or using some library to take care of this as this quick prototype will split quoted arguments. also think about splitting lines so whole scripts can be sent as a single multiline string
+    commandWithArguments.split(" ").toList
+  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
+    os.proc(commandWithArguments.splitCommandWithArguments()).callLines()
+  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
+    os.proc(commandWithArguments.splitCommandWithArguments()).callUnit()
+  def callText()(using wd: Path | NotGiven[Path]): String =
+    os.proc(commandWithArguments.splitCommandWithArguments()).callText()
+  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
+    os.proc(commandWithArguments.splitCommandWithArguments()).callVerbose()
+
 def which(name: String): Option[Path] =
-  Try(os.proc("which", name).callText()) match
+  Try(s"which $name".callText()) match
     case Success(path) => Some(Path(path))
     case _             => None
 
@@ -83,8 +99,8 @@ def linkScripts(scriptsFolder: Path, linksFolder: Path) =
     }
 
 def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
-  val subshellWrapper = os
-    .read(os.pwd / "common" / "subshellWrapperTemplate.sc")
+  val scriptWrapper = os
+    .read(os.pwd / "common" / "scriptWrapperTemplate.sc")
     .replace("core.sc", (os.pwd / "common" / "core.sc").toString)
     .replace(
       "os.pwd",
@@ -99,8 +115,8 @@ def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
       val wrapper    = wrappersFolder / scriptName.stripSuffix(".p.sc")
       if !os.exists(wrapper) then
         println(s"Wrapping $scriptName in $wrapper")
-        val specificWrapper = subshellWrapper
-          .replace("echo subshell call", s"./${script.relativeTo(os.pwd).toString}")
+        val specificWrapper = scriptWrapper
+          .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
         os.write(wrapper, specificWrapper)
         os.perms.set(wrapper, "rwxr-xr-x")
       else println(s"$scriptName already wrapped in $wrapper")
@@ -134,14 +150,10 @@ def addWrappersFolderToPath() =
     println(s"$WrappersFolder already in the PATH")
     true
 
-def installWrappers() =
+def installWrappers(scriptFolders: Path*) =
   addWrappersFolderToPath()
-  val scriptFolders =
-    os.pwd / "common" / "scripts"
-    os.pwd / "mac" / "scripts"
-      :: Nil
   println(
-    s"Adding to folder $WrappersFolder subshell wrapper scripts for the ones in the following folders:${scriptFolders
+    s"Adding to folder $WrappersFolder wrapper scripts for the ones in the following folders:${scriptFolders
         .mkString("\n  ", "\n  ", "")}",
   )
   os.makeDir.all(WrappersFolder)
@@ -324,22 +336,20 @@ trait Tool(
   def callAsString(args: List[String]): String =
     s"$name ${args.mkString(" ")}"
   def tryCallLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
-    Try(os.proc(name, args).callLines())
+    Try((name :: args.toList).callLines())
   def run(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
-    run(args*)
+    (name :: args).callUnit()
   def run(args: String*)(using wd: Path | NotGiven[Path]): Unit =
-    os.proc(name, args).callUnit()
+    run(args.toList)
   def runVerbose(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
-    runVerbose(args*)
-  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
     println(s"running ${callAsString(args*)}")
-    os.proc(name, args).callVerbose()
-  def runText(args: List[String])(using wd: Path | NotGiven[Path]): String =
-    runText(args*)
+    (name :: args).callVerbose()
+  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
+    runVerbose(args.toList)
   def runText(args: String*)(using wd: Path | NotGiven[Path]): String =
-    os.proc(name, args).callText()
+    (name :: args.toList).callText()
   def runLines(args: String*)(using wd: Path | NotGiven[Path]): List[String] =
-    os.proc(name, args).callLines()
+    (name :: args.toList).callLines()
   def tryRunLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
     Try(runLines(args*))
 
@@ -403,8 +413,12 @@ trait Font(
   override val dependencies: List[Dependency] = List.empty,
 ) extends Artifact:
   override def installedVersion(): InstalledVersion =
-    val fonts = os.proc("fc-list").callText()
+    val fonts = "fc-list".callText()
     if fonts.contains(name) then InstalledVersion.NA else InstalledVersion.Absent
+
+//added so tool functions like runText can be used in cases which don't clearly depend on a specific tool and hopefully avoids having to import os in most cases.
+//will also be used to hold higher level abstraction functions that use multiple tools and would only make sense in the context of this project
+object oztools extends BuiltInTool("oztools")
 
 object bash extends BuiltInTool("bash") with Shell
 
@@ -520,7 +534,9 @@ object hdiutil extends BuiltInTool("hdiutil"):
   def unmount(volume: Path) = run("detach", volume.toString)
 
 object installer extends BuiltInTool("installer"):
-  def installPkg(pkg: Path): Unit = os.proc("sudo", "installer", "-pkg", pkg.toString, "-target", "/").call()
+  def installPkg(pkg: Path): Unit =
+    // using a list instead of a string to avoid having to worry about escaping the path for now
+    List("sudo", "installer", "-pkg", pkg.toString, "-target", "/").callUnit()
   def installDmg(dmgFilePath: Path, pkgFileName: String): Unit =
     Using(DmgFile(dmgFilePath)) { dmg =>
       val volume = dmg.volume
