@@ -7,6 +7,7 @@
 //> using toolkit latest
 
 import core.*
+import core.given
 import tools.*
 import util.*
 import osboxes.*

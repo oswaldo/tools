@@ -3,11 +3,12 @@
 //> using dep "com.lihaoyi::pprint::0.8.1"
 
 import os.*
+import java.nio.file.attribute.PosixFilePermission
 import util.*
 import pprint.*
 import util.chaining.scalaUtilChainingOps
 
-def arg[T](i: Int, default: => T, parser: (String) => Option[T])(using args: Array[String]): T =
+def arg[T](i: Int, default: => T)(using args: Array[String], parser: (String) => Option[T]): T =
   Try {
     if args.length <= i then None
     else parser(args(i))
@@ -16,14 +17,16 @@ def arg[T](i: Int, default: => T, parser: (String) => Option[T])(using args: Arr
     case e =>
       default
 
-def arg(i: Int, default: => String)(using args: Array[String]): String =
-  arg(i, default, Some(_))
+def argRequired[T](i: Int, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
+  arg(i, throw new Exception(s"Arg $i: $missingMessage"))
 
-def argRequired[T](i: Int, missingMessage: => String, parser: (String) => T)(using args: Array[String]): T =
-  arg(i, throw new Exception(s"Arg $i: $missingMessage"), s => Some(parser(s)))
-
-def argRequired(i: Int, missingMessage: => String)(using args: Array[String]): String =
-  argRequired(i, missingMessage, identity)
+given stringParser: (String => String)   = identity
+given intParser: (String => Int)         = _.toInt
+given pathParser: (String => Path)       = Path(_)
+given relPathParser: (String => RelPath) = RelPath(_)
+given booleanParser: (String => Boolean) = _.toBoolean
+given optionParser[T](using parser: (String => T)): (String => Option[T]) =
+  (s: String) => Try(parser(s)).toOption
 
 //it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
 def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
@@ -113,7 +116,7 @@ def linkScripts(scriptsFolder: Path, linksFolder: Path) =
 
 def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
   val scriptWrapper = os
-    .read(os.pwd / "common" / "scriptWrapperTemplate.sc")
+    .read(os.pwd / "common" / "scriptWrapper.t.sc")
     .replace("core.sc", (os.pwd / "common" / "core.sc").toString)
     .replace(
       "os.pwd",
@@ -124,15 +127,18 @@ def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
   os.list(scriptsFolder)
     .filter(_.last.endsWith(".p.sc"))
     .foreach { script =>
+      if !os.perms(script).contains(PosixFilePermission.OWNER_EXECUTE) then
+        println(s"  Adding executable permission to $script")
+        os.perms.set(script, "rwxr-xr-x")
       val scriptName = script.last
       val wrapper    = wrappersFolder / scriptName.stripSuffix(".p.sc")
       if !os.exists(wrapper) then
-        println(s"Wrapping $scriptName in $wrapper")
+        println(s"  Wrapping $scriptName in $wrapper")
         val specificWrapper = scriptWrapper
           .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
         os.write(wrapper, specificWrapper)
         os.perms.set(wrapper, "rwxr-xr-x")
-      else println(s"$scriptName already wrapped in $wrapper")
+      else println(s"  $scriptName already wrapped in $wrapper")
     }
 
 val WrappersFolder = os.home / "oztools"
@@ -580,7 +586,8 @@ object python extends Tool("python"):
         InstalledVersion.Absent
       case Success(v) => InstalledVersion.Version(v.trim())
 
-//TODO think if python dependencies should be treated as we do with extensions or if we need another abstraction instead of Tool
+//TODO think if python packages should be treated as we do with extensions or if we need another abstraction instead of Tool
+//TODO think about pro and cons of using one package manager for everything (in this case we are using brew instead of pip for python packages)
 object six extends Tool("six", RequiredVersion.any(python)):
   override def installedVersion(): InstalledVersion =
     python.packageVersion(name)
@@ -588,6 +595,14 @@ object six extends Tool("six", RequiredVersion.any(python)):
 object yaml extends Tool("yaml", RequiredVersion.any(python)):
   override def installedVersion(): InstalledVersion =
     python.packageVersion(name)
+
+object transformers extends Tool("transformers", RequiredVersion.any(python)):
+  override def installedVersion(): InstalledVersion =
+    python.packageVersion(name)
+
+  def generate(input: String, model: String, maxLength: Int = 100): String =
+    // TODO
+    "some generated text"
 
 object git extends Tool("git"):
 

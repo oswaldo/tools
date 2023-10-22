@@ -5,6 +5,7 @@
 //> using file "../llm.sc"
 
 import core.* 
+import core.given
 import llm.*
 
 llm.installIfNeeded()

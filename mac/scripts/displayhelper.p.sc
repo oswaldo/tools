@@ -6,9 +6,11 @@
 //> using file "../displayplacer.sc"
 
 import core.* 
+import core.given
 import tools.* 
 import displayplacer.*
+import displayplacer.given
 
 displayplacer.installIfNeeded()
 given Array[String] = args
-displayplacer.placeBuiltIn(arg(0, displayplacer.Position.Right, displayplacer.Position.fromString))
+displayplacer.placeBuiltIn(arg(0, displayplacer.Position.Right))
