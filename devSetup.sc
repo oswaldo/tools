@@ -37,5 +37,5 @@ vscode.installExtensionsIfNeeded(
     vscode.scalametalsExtension,
     vscode.vscodeIconsExtension,
 )
-// virtualBox.constructVm(virtualBoxImage.ubuntu23_04)
+// virtualBox.constructVmIfNeeded(virtualBoxImage.ubuntu23_04)
 println("Finished setup!")
