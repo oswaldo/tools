@@ -10,5 +10,5 @@ libraryDependencies ++= Seq(
   "io.kevinlee" %% "just-semver" % "0.13.0",
   "com.lihaoyi" %% "pprint"      % "0.8.1",
   // LATEST scala toolkit
-  "org.scala-lang" %% "toolkit" % "(,]",
+  "org.scala-lang" %% "toolkit" % "0.2.1",
 )
