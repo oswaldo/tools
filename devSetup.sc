@@ -20,7 +20,7 @@ installIfNeeded(
     //vscode is the editor being used for development of this project
     vscode,
     //virtualBox for running VMs
-    virtualBox,
+    // virtualBox,
 )
 vscode.installExtensionsIfNeeded(
     vscode.copilotExtension,
@@ -29,5 +29,5 @@ vscode.installExtensionsIfNeeded(
     vscode.scalametalsExtension,
     vscode.vscodeIconsExtension,
 )
-virtualBox.constructVm(virtualBoxImage.ubuntu23_04)
+// virtualBox.constructVmIfNeeded(virtualBoxImage.ubuntu23_04)
 println("Finished setup!")

@@ -57,7 +57,9 @@ object virtualBox extends Tool("vboxmanage"):
           println("Found VM: " + name + " with UUID " + uuid)
           RegisteredVm(name, UUID.fromString(uuid))
         }
-      case _ => Nil
+      case e =>
+        println("Could not find VMs: " + e)
+        Nil
 
   def createVm(image: virtualBoxImage): Option[RegisteredVm] =
     listVms().find(_.name == image.vmName) match
@@ -83,7 +85,7 @@ object virtualBox extends Tool("vboxmanage"):
         println("Created VM: " + image.vmName + " with UUID " + uuid)
         Some(RegisteredVm(image.vmName, uuid))
 
-  def configureVm(vm: RegisteredVm, cpus: Int = 2, memory: Int = 2048, vram: Int = 12) =
+  def configureVm(vm: RegisteredVm, cpus: Int = 2, memory: Int = 4096, vram: Int = 128) =
     runVerbose(
       "modifyvm",
       vm.name,
@@ -225,4 +227,13 @@ object virtualBox extends Tool("vboxmanage"):
       configureBootOrder(vm)
       vm
     }
+
+  def constructVmIfNeeded(image: virtualBoxImage): Option[RegisteredVm] =
+    listVms().find(_.name == image.vmName) match
+      case Some(vm) =>
+        println("VM already created: " + vm)
+        Some(vm)
+      case None =>
+        constructVm(image)
+
 end virtualBox
