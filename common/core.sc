@@ -5,6 +5,7 @@
 import os.*
 import util.*
 import pprint.*
+import util.chaining.scalaUtilChainingOps
 
 def arg[T](i: Int, default: => T, parser: (String) => Option[T])(using args: Array[String]): T =
   Try {
@@ -23,6 +24,18 @@ def argRequired[T](i: Int, missingMessage: => String, parser: (String) => T)(usi
 
 def argRequired(i: Int, missingMessage: => String)(using args: Array[String]): String =
   argRequired(i, missingMessage, identity)
+
+//it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
+def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
+  lines.collectFirst { case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix) } match
+    case None => InstalledVersion.NA
+    case Some(v) =>
+      Some(v)
+        .filter(_.nonEmpty)
+        // it is also common to have one or more space followed by some suffix, which we want to drop
+        .map(_.split("\\s+").head)
+        .map(InstalledVersion.Version(_))
+        .getOrElse(InstalledVersion.NA)
 
 extension (p: proc)
   def callLines()(using wd: Path | NotGiven[Path]): List[String] =
@@ -190,11 +203,8 @@ enum RequiredVersion:
       case (Latest, required) if required != Absent => Compatible(installedVersion, this)
       case (Exact(dependency), Version(installed)) =>
         if dependency == installed then Compatible(installedVersion, this)
-        else
-          println(s"  dependency not met! (required: $this, installed: $installedVersion)")
-          Incompatible(installedVersion, this)
+        else Incompatible(installedVersion, this)
       case (_, Absent) =>
-        println(s"  dependency missing! (required: $this, installed: $installedVersion)")
         Missing(installedVersion, this)
       case (AtLeast(dependency), Version(installed)) =>
         import just.semver.SemVer
@@ -209,7 +219,6 @@ enum RequiredVersion:
             println(s"  compatibility check failed (required: $this, installed: $installedVersion, failure: $e)")
             Unknown(installedVersion, this)
       case _ =>
-        println(s"  unknown compatibility state (required: $this, installed: $installedVersion)")
         Unknown(installedVersion, this)
     println(s"  result: $result")
     result
@@ -251,6 +260,7 @@ trait Artifact:
     println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
       d.installDependencies()
+      println(s"  checking if ${d.artifact.name} is installed...")
       if (!d.compatibleVersionInstalled().compatible) d.installIfNeeded()
     }
   def install(requiredVersion: RequiredVersion): Unit =
@@ -390,6 +400,10 @@ case class BuiltInTool(
 trait Shell:
   this: Tool =>
   def execute(script: String)(using wd: Path | NotGiven[Path]) = run("-c", s"$script")
+  def executeText(script: String)(using wd: Path | NotGiven[Path]) =
+    runText("-c", s"$script")
+  def executeLines(script: String)(using wd: Path | NotGiven[Path]) =
+    runLines("-c", s"$script")
   def executeVerbose(script: String)(using wd: Path | NotGiven[Path]) =
     runVerbose("-c", s"$script")
 
@@ -409,10 +423,10 @@ object oztools extends BuiltInTool("oztools")
 object bash extends BuiltInTool("bash") with Shell
 
 object pkgutil extends BuiltInTool("pkgutil"):
-  def pkgInfo(packageId: String) = Try(runText("--pkg-info", packageId)) match
-    case Success(info) =>
-      Some(info.trim()).filter(_.nonEmpty)
-    case _ => None
+  def pkgInfo(packageId: String) = Try(runLines("--pkg-info", packageId)) match
+    case Success(info) if info.nonEmpty =>
+      info.map(_.trim()).filter(_.nonEmpty)
+    case _ => Nil
 
 object shasum extends BuiltInTool("shasum"):
   def sha256sum(file: Path) =
@@ -434,21 +448,18 @@ object xcodeSelect extends Tool("xcode-select"):
     case _                              => None
   // TODO think if we should support a case like "for checking the xcode command line tools version, we need to call pkgutil, but the key changes depending on MacOS version". Should macos show up as a Tool?
   override def installedVersion(): InstalledVersion =
-    val versionLinePrefix = "version: "
-    pkgutil.pkgInfo("com.apple.pkg.CLTools_Executables") match
-      case None =>
-        path() match
-          case None    => InstalledVersion.Absent
-          case Some(_) => InstalledVersion.NA
-      case Some(v) =>
-        val semverSafe = v.linesIterator
-          .find(_.startsWith(versionLinePrefix))
-          .get
-          .stripPrefix(versionLinePrefix)
-          .split("\\.")
-          .take(3)
-          .mkString(".")
-        InstalledVersion.Version(semverSafe)
+    pkgutil
+      .pkgInfo("com.apple.pkg.CLTools_Executables")
+      .pipe(parseVersionFromLines(_, "version: "))
+      .pipe {
+        case InstalledVersion.Version(v) =>
+          val semverSafe = v
+            .split("\\.")
+            .take(3)
+            .mkString(".")
+          InstalledVersion.Version(semverSafe)
+        case v => v
+      }
   override def install(requiredVersion: RequiredVersion) =
     // TODO decide on a way to hold, waiting for xcode-select to be installed
     run("--install")
@@ -477,18 +488,8 @@ object DownloadableFile:
 
 object curl extends Tool("curl"):
   override def installedVersion(): InstalledVersion =
-    val versionLinePrefix = "curl "
-    runText("--version") match
-      case "" => InstalledVersion.Absent
-      case v =>
-        InstalledVersion.Version(
-          v.linesIterator
-            .find(_.startsWith(versionLinePrefix))
-            .get
-            .stripPrefix(versionLinePrefix)
-            .split(" ")
-            .head,
-        )
+    runLines("--version")
+      .pipe(parseVersionFromLines(_, "curl "))
   def get(url: String) = runText("-fsSL", url)
   def download(url: String, destination: Path): Unit =
     runVerbose("-C", "-", "-fSL", "-o", destination.toString, url)
@@ -558,28 +559,35 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
 
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
-    val versionLinePrefix = "Scala CLI version: "
-    Try(runText("--version")) match
+    Try(runLines("--version")) match
       case Success(v) =>
-        Some(v)
-          .filter(_.nonEmpty)
-          .map { v =>
-            InstalledVersion.Version(
-              v.linesIterator
-                .find(_.startsWith(versionLinePrefix))
-                .get
-                .stripPrefix(versionLinePrefix)
-                .split(" ")
-                .head,
-            )
-          }
-          .getOrElse(InstalledVersion.NA)
+        parseVersionFromLines(v, "Scala CLI version: ")
       case _ => InstalledVersion.Absent
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =
     // it already checks if completions are installed, so no need to check for this case
     runVerbose("install", "completions")
+
+object python extends Tool("python"):
+  override def installedVersion(): InstalledVersion =
+    runLines("--version")
+      .pipe(parseVersionFromLines(_, "Python "))
+  def packageVersion(packageName: String): InstalledVersion =
+    Try(bash.executeText(s"python -c \"import $packageName; print($packageName.__version__)\"")) match
+      case Failure(e) =>
+        println(s"  package $packageName not installed:\n${e.getMessage()}")
+        InstalledVersion.Absent
+      case Success(v) => InstalledVersion.Version(v.trim())
+
+//TODO think if python dependencies should be treated as we do with extensions or if we need another abstraction instead of Tool
+object six extends Tool("six", RequiredVersion.any(python)):
+  override def installedVersion(): InstalledVersion =
+    python.packageVersion(name)
+
+object yaml extends Tool("yaml", RequiredVersion.any(python)):
+  override def installedVersion(): InstalledVersion =
+    python.packageVersion(name)
 
 object git extends Tool("git"):
 
