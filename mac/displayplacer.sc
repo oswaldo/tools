@@ -53,6 +53,8 @@ object displayplacer extends Tool("displayplacer"):
         case "below" => Some(Below)
         case _       => None
 
+  given optionalPositionParser : (String => Option[Position]) = Position.fromString(_)
+
   def displays(): List[Display] =
     val idLine = "Contextual screen id:"
     val resolutionLine = "Resolution:"

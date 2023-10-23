@@ -26,7 +26,9 @@ installIfNeeded(
 )
 scalaCli.installCompletions()
 installWrappers(
-    os.pwd / "common" / "scripts",
-    os.pwd / "mac" / "scripts",
     os.pwd / "aws" / "scripts",
+    os.pwd / "common" / "scripts",
+    os.pwd / "llm" / "scripts",
+    os.pwd / "mac" / "scripts",
+    os.pwd / "transformers" / "scripts",
 )
