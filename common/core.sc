@@ -45,18 +45,6 @@ def parseVersionFromLines(lines: List[String], versionLinePrefix: String): Insta
         .map(InstalledVersion.Version(_))
         .getOrElse(InstalledVersion.NA)
 
-//it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
-def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
-  lines.collectFirst { case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix) } match
-    case None => InstalledVersion.NA
-    case Some(v) =>
-      Some(v)
-        .filter(_.nonEmpty)
-        // it is also common to have one or more space followed by some suffix, which we want to drop
-        .map(_.split("\\s+").head)
-        .map(InstalledVersion.Version(_))
-        .getOrElse(InstalledVersion.NA)
-
 extension (p: proc)
   def callLines()(using wd: Path | NotGiven[Path]): List[String] =
     wd match

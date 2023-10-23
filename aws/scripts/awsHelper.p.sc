@@ -13,7 +13,7 @@ import aws.*
 import pprint.*
 
 given Array[String] = args
-val profileName = argRequired(0, "profileName is required!")
+val profileName: String = argRequired(0, "profileName is required!")
 
 given SsoProfile = SsoProfile(profileName)
 
