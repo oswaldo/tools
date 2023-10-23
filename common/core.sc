@@ -250,6 +250,7 @@ object RequiredVersion:
     artifacts.map(Dependency(_, RequiredVersion.AtLeast(version))).toList
 
 enum InstalledVersion:
+  // TODO think about verifying if the version is semver compatible, and if not, if it could be made compatible
   case Version(version: String)
   case Absent
   case NA
@@ -257,6 +258,18 @@ enum InstalledVersion:
     case Version(v) => v
     case Absent     => "Absent"
     case NA         => "NA"
+
+object InstalledVersion:
+  def parse(versionLinePrefix: String, tryLines: Try[List[String]]): InstalledVersion =
+    // potentially the first word after the prefix is the version, so we drop the prefix and take the first word
+    tryLines match
+      case Success(lines) =>
+        lines
+          .find(_.startsWith(versionLinePrefix))
+          .map(_.stripPrefix(versionLinePrefix).split("\\s+").head)
+          .map(Version(_))
+          .getOrElse(Absent)
+      case _ => Absent
 
 case class Dependency(artifact: Artifact, version: RequiredVersion):
   def installDependencies() = artifact.installDependencies()
@@ -324,6 +337,7 @@ trait Artifact:
 end Artifact
 
 def installIfNeeded(artifacts: Artifact*): Unit =
+  // TODO think about "merging" dependencies from the same package manager in a single call if possible, also considering redundant transitive dependencies
   RequiredVersion.any(artifacts*).foreach { d =>
     println("\n")
     d.installIfNeeded()
@@ -352,8 +366,10 @@ trait Tool(
     (name :: args).callUnit()
   def run(args: String*)(using wd: Path | NotGiven[Path]): Unit =
     run(args.toList)
+  def runText(args: List[String])(using wd: Path | NotGiven[Path]): String =
+    (name :: args).callText()
   def runText(args: String*)(using wd: Path | NotGiven[Path]): String =
-    (name :: args.toList).callText()
+    runText(args.toList)
   def runLines(args: String*)(using wd: Path | NotGiven[Path]): List[String] =
     (name :: args.toList).callLines()
   def tryRunLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
@@ -584,6 +600,7 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   def installCask(formula: String)    = runVerbose("install", "--cask", formula)
   def tap(tap: String)                = runVerbose("tap", tap)
   def upgradeFormula(formula: String) = runVerbose("upgrade", formula)
+  def formulaInfo(formula: String)    = runVerbose("info", formula)
 
 object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
   override def installedVersion(): InstalledVersion =
