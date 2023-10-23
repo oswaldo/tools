@@ -7,17 +7,22 @@ import java.nio.file.attribute.PosixFilePermission
 import util.*
 import pprint.*
 import util.chaining.scalaUtilChainingOps
+import scala.reflect.ClassTag
 
-def arg[T](i: Int, default: => T)(using args: Array[String], parser: (String) => Option[T]): T =
+def arg[T: ClassTag](i: Int, default: => T | String)(using args: Array[String], parser: (String) => Option[T]): T =
   Try {
     if args.length <= i then None
     else parser(args(i))
   } match
     case Success(Some(value)) => value
     case e =>
-      default
+      default match
+        case s: String => parser(s).getOrElse(throw new Exception(s"Arg $i: $e"))
+        case v: T      => v
+        // this shouldn't happen as the default should be either a string or a T
+        case v => throw new Exception(s"Arg $i: Unexpected value $v of type ${v.getClass}")
 
-def argRequired[T](i: Int, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
+def argRequired[T: ClassTag](i: Int, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
   arg(i, throw new Exception(s"Arg $i: $missingMessage"))
 
 given stringParser: (String => String)   = identity
@@ -25,7 +30,7 @@ given intParser: (String => Int)         = _.toInt
 given pathParser: (String => Path)       = Path(_)
 given relPathParser: (String => RelPath) = RelPath(_)
 given booleanParser: (String => Boolean) = _.toBoolean
-given optionParser[T](using parser: (String => T)): (String => Option[T]) =
+given optionParser[T: ClassTag](using parser: (String => T)): (String => Option[T]) =
   (s: String) => Try(parser(s)).toOption
 
 //it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
@@ -57,6 +62,10 @@ extension (p: proc)
     wd match
       case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
       case _        => p.call(stdout = os.Inherit, stderr = os.Inherit)
+  def callVerboseText()(using wd: Path | NotGiven[Path]): String =
+    wd match
+      case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd).out.text().trim()
+      case _        => p.call(stdout = os.Inherit, stderr = os.Inherit).out.text().trim()
 
 extension (commandWithArguments: List[String])
   def callLines()(using wd: Path | NotGiven[Path]): List[String] =
@@ -67,6 +76,8 @@ extension (commandWithArguments: List[String])
     os.proc(commandWithArguments).callText()
   def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
     os.proc(commandWithArguments).callVerbose()
+  def callVerboseText()(using wd: Path | NotGiven[Path]): String =
+    os.proc(commandWithArguments).callVerboseText()
 
 extension (commandWithArguments: String)
   def splitCommandWithArguments(): List[String] =
@@ -114,9 +125,9 @@ def linkScripts(scriptsFolder: Path, linksFolder: Path) =
       else println(s"$scriptName already linked to $link")
     }
 
-def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
+def wrapScripts(scriptsFolder: Path, installFolder: Path) =
   val scriptWrapper = os
-    .read(os.pwd / "common" / "scriptWrapper.t.sc")
+    .read(os.pwd / "common" / "scripts" / "template" / "scriptWrapper.t.sc")
     .replace("core.sc", (os.pwd / "common" / "core.sc").toString)
     .replace(
       "os.pwd",
@@ -131,24 +142,22 @@ def wrapScripts(scriptsFolder: Path, wrappersFolder: Path) =
         println(s"  Adding executable permission to $script")
         os.perms.set(script, "rwxr-xr-x")
       val scriptName = script.last
-      val wrapper    = wrappersFolder / scriptName.stripSuffix(".p.sc")
-      if !os.exists(wrapper) then
-        println(s"  Wrapping $scriptName in $wrapper")
-        val specificWrapper = scriptWrapper
-          .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
-        os.write(wrapper, specificWrapper)
-        os.perms.set(wrapper, "rwxr-xr-x")
-      else println(s"  $scriptName already wrapped in $wrapper")
+      val wrapper    = installFolder / scriptName.stripSuffix(".p.sc")
+      println(s"  ${if os.exists(wrapper) then "Updating" else "Creating"} wrapper $wrapper")
+      val specificWrapper = scriptWrapper
+        .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
+      os.write.over(wrapper, specificWrapper)
+      os.perms.set(wrapper, "rwxr-xr-x")
     }
 
-val WrappersFolder = os.home / "oztools"
+val InstallFolder = os.home / "oztools"
 
-def addWrappersFolderToPath() =
+def addInstallFolderToPath() =
   val path = System.getenv("PATH")
-  if !path.contains(WrappersFolder.toString) then
-    println(s"Adding $WrappersFolder to the PATH")
+  if !path.contains(InstallFolder.toString) then
+    println(s"Adding $InstallFolder to the PATH")
     val profileFiles = List(".bash_profile", ".profile", ".zprofile").map(os.home / _).filter(os.exists)
-    val line         = s"export PATH=\"$$PATH:$WrappersFolder\""
+    val line         = s"export PATH=\"$$PATH:$InstallFolder\""
     profileFiles.foreach { profileFile =>
       if os.read.lines(profileFile).contains(line) then println(s"$profileFile already contained the export PATH line")
       else
@@ -166,18 +175,18 @@ def addWrappersFolderToPath() =
     }
     false
   else
-    println(s"$WrappersFolder already in the PATH")
+    println(s"$InstallFolder already in the PATH")
     true
 
 def installWrappers(scriptFolders: Path*) =
-  addWrappersFolderToPath()
+  addInstallFolderToPath()
   println(
-    s"Adding to folder $WrappersFolder wrapper scripts for the ones in the following folders:${scriptFolders
+    s"Adding to folder $InstallFolder wrapper scripts for the ones in the following folders:${scriptFolders
         .mkString("\n  ", "\n  ", "")}",
   )
-  os.makeDir.all(WrappersFolder)
+  os.makeDir.all(InstallFolder)
   scriptFolders.foreach { folder =>
-    wrapScripts(folder, WrappersFolder)
+    wrapScripts(folder, InstallFolder)
   }
 
 trait VersionCompatibilityProperties:
@@ -343,17 +352,20 @@ trait Tool(
     (name :: args).callUnit()
   def run(args: String*)(using wd: Path | NotGiven[Path]): Unit =
     run(args.toList)
-  def runVerbose(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
-    println(s"running ${callAsString(args*)}")
-    (name :: args).callVerbose()
-  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
-    runVerbose(args.toList)
   def runText(args: String*)(using wd: Path | NotGiven[Path]): String =
     (name :: args.toList).callText()
   def runLines(args: String*)(using wd: Path | NotGiven[Path]): List[String] =
     (name :: args.toList).callLines()
   def tryRunLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
     Try(runLines(args*))
+  def runVerbose(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
+    println(s"running ${callAsString(args*)}")
+    (name :: args).callVerbose()
+  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
+    runVerbose(args.toList)
+  def runVerboseText(args: String*)(using wd: Path | NotGiven[Path]): String =
+    println(s"running ${callAsString(args*)}")
+    (name :: args.toList).callVerboseText()
 
 case class ToolExtension(
   val extensionId: String,
@@ -405,13 +417,23 @@ case class BuiltInTool(
 
 trait Shell:
   this: Tool =>
-  def execute(script: String)(using wd: Path | NotGiven[Path]) = run("-c", s"$script")
+  def execute(script: String)(using wd: Path | NotGiven[Path]) = run("-c", script)
   def executeText(script: String)(using wd: Path | NotGiven[Path]) =
-    runText("-c", s"$script")
+    runText("-c", script)
   def executeLines(script: String)(using wd: Path | NotGiven[Path]) =
-    runLines("-c", s"$script")
+    runLines("-c", script)
   def executeVerbose(script: String)(using wd: Path | NotGiven[Path]) =
-    runVerbose("-c", s"$script")
+    runVerbose("-c", script)
+  def execute(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+    run((script.toString +: args)*)
+  def executeText(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+    runText((script.toString +: args)*)
+  def executeLines(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+    runLines((script.toString +: args)*)
+  def executeVerbose(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+    runVerbose((script.toString +: args)*)
+  def executeVerboseText(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+    runVerboseText((script.toString +: args)*)
 
 trait Font(
   override val name: String,
@@ -575,7 +597,7 @@ object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredV
     // it already checks if completions are installed, so no need to check for this case
     runVerbose("install", "completions")
 
-object python extends Tool("python"):
+object python extends Tool("python") with Shell:
   override def installedVersion(): InstalledVersion =
     runLines("--version")
       .pipe(parseVersionFromLines(_, "Python "))
@@ -595,14 +617,6 @@ object six extends Tool("six", RequiredVersion.any(python)):
 object yaml extends Tool("yaml", RequiredVersion.any(python)):
   override def installedVersion(): InstalledVersion =
     python.packageVersion(name)
-
-object transformers extends Tool("transformers", RequiredVersion.any(python)):
-  override def installedVersion(): InstalledVersion =
-    python.packageVersion(name)
-
-  def generate(input: String, model: String, maxLength: Int = 100): String =
-    // TODO
-    "some generated text"
 
 object git extends Tool("git"):
 
