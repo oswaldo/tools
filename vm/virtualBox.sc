@@ -39,7 +39,7 @@ object virtualBox extends Tool("vboxmanage"):
   override def installedVersion(): InstalledVersion =
     tryRunLines("--version") match
       case Success(v) =>
-        InstalledVersion.Version(v.head.trim())
+        InstalledVersion.Version(v.head.trim().replace("_", "-").replace("BETA", "BETA.").replace("r", "+r"))
       case _ => InstalledVersion.Absent
 
   case class RegisteredVm(val name: String, val uuid: UUID)

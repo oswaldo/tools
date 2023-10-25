@@ -18,11 +18,11 @@ installIfNeeded(
     scalaCli,
     
     //llvm if you want to play with scala native
-    // llvm,
+    llvm,
 
     //totally recommended for a better terminal experience
-    // spaceshipPrompt,
-    // iterm2,
+    spaceshipPrompt,
+    iterm2,
 )
 scalaCli.installCompletions()
 installWrappers(

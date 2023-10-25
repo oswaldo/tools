@@ -9,87 +9,124 @@ import pprint.*
 import util.chaining.scalaUtilChainingOps
 import scala.reflect.ClassTag
 
-def arg[T: ClassTag](i: Int, default: => T | String)(using args: Array[String], parser: (String) => Option[T]): T =
+def arg[T: ClassTag](i: Int, default: => (T | String))(using args: Array[String], parser: (String) => Option[T]): T =
   Try {
     if args.length <= i then None
     else parser(args(i))
   } match
-    case Success(Some(value)) => value
-    case e =>
+    case Success(Some(value)) =>
+      value
+    case Failure(e) =>
+      throw e
+    case Success(None) =>
       default match
-        case s: String => parser(s).getOrElse(throw new Exception(s"Arg $i: $e"))
-        case v: T      => v
+        case s: String =>
+          parser(s).getOrElse(throw new Exception(s"Arg $i: Parsing the default value $s resulted in None"))
+        case v: T => v
         // this shouldn't happen as the default should be either a string or a T
         case v => throw new Exception(s"Arg $i: Unexpected value $v of type ${v.getClass}")
 
 def argRequired[T: ClassTag](i: Int, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
   arg(i, throw new Exception(s"Arg $i: $missingMessage"))
 
-given stringParser: (String => String)   = identity
-given intParser: (String => Int)         = _.toInt
-given pathParser: (String => Path)       = Path(_)
+given stringParser: (String => String) = identity
+given intParser: (String => Int)       = _.toInt
+given pathParser: (String => Path) = s =>
+  if s.startsWith("/") then Path(s)
+  else os.pwd / RelPath(s)
 given relPathParser: (String => RelPath) = RelPath(_)
 given booleanParser: (String => Boolean) = _.toBoolean
 given optionParser[T: ClassTag](using parser: (String => T)): (String => Option[T]) =
-  (s: String) => Try(parser(s)).toOption
+  (s: String) =>
+    Try(parser(s)) match
+      case Success(v) => Some(v)
+      case Failure(e) =>
+        throw new Exception(s"Failed to parse $s as ${implicitly[ClassTag[T]].runtimeClass.getSimpleName}", e)
 
 //it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
 def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
+
+  def semverSafe(parts: Seq[String]) =
+    parts
+      .filter(_.count(_ == '.') > 0)
+      .map{p =>
+        val dots = p.count(_ == '.')
+        if dots == 1 then p + ".0"
+        else if dots > 2 then p.split("\\.").take(3).mkString(".")
+        else p
+      }
+
   lines.collectFirst { case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix) } match
     case None => InstalledVersion.NA
     case Some(v) =>
       Some(v)
         .filter(_.nonEmpty)
         // it is also common to have one or more space followed by some suffix, which we want to drop
-        .map(_.split("\\s+").head)
+        .map{s => 
+          val parts = semverSafe(s.split("\\s+"))
+          if versionLinePrefix.isEmpty then
+            parts
+              .find(just.semver.SemVer.parse(_).isRight)
+              .getOrElse(parts.head)
+          else parts.head
+        }
         .map(InstalledVersion.Version(_))
         .getOrElse(InstalledVersion.NA)
 
+type MaybeGiven[T] = T | NotGiven[T]
+extension [T: ClassTag](mg: MaybeGiven[T])
+  def orNull(using ev: Null <:< T): T =
+    mg match
+      case g: T => g
+      case _    => null.asInstanceOf[T]
+
 extension (p: proc)
-  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
-    wd match
-      case wd: Path => p.call(cwd = wd).out.lines().toList
-      case _        => p.call().out.lines().toList
-  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
-    wd match
-      case wd: Path => p.call(cwd = wd)
-      case _        => p.call()
-  def callText()(using wd: Path | NotGiven[Path]): String =
-    wd match
-      case wd: Path => p.call(cwd = wd).out.text().trim()
-      case _        => p.call().out.text().trim()
-  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
-    wd match
-      case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd)
-      case _        => p.call(stdout = os.Inherit, stderr = os.Inherit)
-  def callVerboseText()(using wd: Path | NotGiven[Path]): String =
-    wd match
-      case wd: Path => p.call(stdout = os.Inherit, stderr = os.Inherit, cwd = wd).out.text().trim()
-      case _        => p.call(stdout = os.Inherit, stderr = os.Inherit).out.text().trim()
+  def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    p.call(cwd = wd.orNull, env = env.orNull).out.lines().toList
+  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+    p.call(cwd = wd.orNull, env = env.orNull)
+  def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
+    p.call(cwd = wd.orNull, env = env.orNull).out.text().trim()
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+    p.call(
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      cwd = wd.orNull,
+      env = env.orNull,
+    )
+  def callVerboseText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
+    p.call(
+      stdout = os.Inherit,
+      stderr = os.Inherit,
+      cwd = wd.orNull,
+      env = env.orNull,
+    ).out
+      .text()
+      .trim()
 
 extension (commandWithArguments: List[String])
-  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
+  def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments).callLines()
-  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
+  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     os.proc(commandWithArguments).callUnit()
-  def callText()(using wd: Path | NotGiven[Path]): String =
+  def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments).callText()
-  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     os.proc(commandWithArguments).callVerbose()
-  def callVerboseText()(using wd: Path | NotGiven[Path]): String =
+  def callVerboseText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments).callVerboseText()
 
 extension (commandWithArguments: String)
   def splitCommandWithArguments(): List[String] =
     // TODO think about improving or using some library to take care of this as this quick prototype will split quoted arguments. also think about splitting lines so whole scripts can be sent as a single multiline string
     commandWithArguments.split(" ").toList
-  def callLines()(using wd: Path | NotGiven[Path]): List[String] =
+  def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments.splitCommandWithArguments()).callLines()
-  def callUnit()(using wd: Path | NotGiven[Path]): Unit =
+  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     os.proc(commandWithArguments.splitCommandWithArguments()).callUnit()
-  def callText()(using wd: Path | NotGiven[Path]): String =
+  def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments.splitCommandWithArguments()).callText()
-  def callVerbose()(using wd: Path | NotGiven[Path]): Unit =
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     os.proc(commandWithArguments.splitCommandWithArguments()).callVerbose()
 
 def which(name: String): Option[Path] =
@@ -125,15 +162,50 @@ def linkScripts(scriptsFolder: Path, linksFolder: Path) =
       else println(s"$scriptName already linked to $link")
     }
 
+case class StringReplacement(
+  val originaFragment: String,
+  val replacement: String,
+)
+
+def doReplacements(orignal: String, replacements: StringReplacement*): String =
+  replacements.foldLeft(orignal) { (result, replacement) =>
+    result.replace(replacement.originaFragment, replacement.replacement)
+  }
+
+val replaceWrapperTemplateComment = StringReplacement(
+  originaFragment = "// This is a template file for wrapping a tool script.",
+  replacement = "// This is a generated wrapper script.",
+)
+
+val replaceNoEditsComment = StringReplacement(
+  originaFragment = "// You are not expected to edit this file directly unless you are working on the oztools itself.",
+  replacement = "// You are not expected to edit this file directly.",
+)
+
+val replaceCoreScAbsolutePath = StringReplacement(
+  originaFragment = "../../core.sc",
+  replacement = (os.pwd / "common" / "core.sc").toString,
+)
+
+val replaceOsPwdToolsAbsoluteScript = StringReplacement(
+  originaFragment = "given wd: Path = os.pwd",
+  replacement = s"given wd: Path = os.root / os.RelPath(\"${os.pwd.toString
+      // dropping the first (now redundant) slash
+      .drop(1)}\")",
+)
+
+val scriptWrapperTemplatePath = os.pwd / "common" / "scripts" / "template" / "scriptWrapper.t.sc"
+
+val EnvCallerFolder = "OZTOOLS_CALLER_FOLDER"
+
 def wrapScripts(scriptsFolder: Path, installFolder: Path) =
-  val scriptWrapper = os
-    .read(os.pwd / "common" / "scripts" / "template" / "scriptWrapper.t.sc")
-    .replace("core.sc", (os.pwd / "common" / "core.sc").toString)
-    .replace(
-      "os.pwd",
-      s"os.root / os.RelPath(\"${os.pwd.toString
-          // dropping the first (now redundant) slash
-          .drop(1)}\")",
+  val scriptWrapper =
+    doReplacements(
+      os.read(scriptWrapperTemplatePath),
+      replaceWrapperTemplateComment,
+      replaceNoEditsComment,
+      replaceCoreScAbsolutePath,
+      replaceOsPwdToolsAbsoluteScript,
     )
   os.list(scriptsFolder)
     .filter(_.last.endsWith(".p.sc"))
@@ -210,7 +282,6 @@ enum RequiredVersion:
   case Exact(version: String)
   case AtLeast(version: String)
   def compatibleWith(installedVersion: InstalledVersion): VersionCompatibility =
-    println(s"  installed: ${installedVersion.versionOrCase} required: $this")
     import VersionCompatibility.*
     import InstalledVersion.*
     val result = (this, installedVersion) match
@@ -235,7 +306,7 @@ enum RequiredVersion:
             Unknown(installedVersion, this)
       case _ =>
         Unknown(installedVersion, this)
-    println(s"  result: $result")
+    println(s"  compatibility: ${pprint(result)}")
     result
 end RequiredVersion
 
@@ -258,6 +329,13 @@ enum InstalledVersion:
     case Version(v) => v
     case Absent     => "Absent"
     case NA         => "NA"
+  //for Version, require the version to be semver compatible
+  require(
+    this match
+      case Version(v) => just.semver.SemVer.parse(v).isRight
+      case _          => true,
+    s"InstalledVersion $this is not semver compatible",
+  )
 
 object InstalledVersion:
   def parse(versionLinePrefix: String, tryLines: Try[List[String]]): InstalledVersion =
@@ -349,37 +427,38 @@ def installIfNeeded(artifacts: List[Artifact]): Unit =
 trait Tool(
   override val name: String,
   override val dependencies: List[Dependency] = List.empty,
+  val versionLinePrefix: String = "",
 ) extends Artifact:
   def path() = which(name)
-  override def installedVersion() = Try(runText("--version")) match
+  override def installedVersion() = Try(runLines("--version")) match
     case Success(v) =>
-      Some(v).filter(_.nonEmpty).map(InstalledVersion.Version(_)).getOrElse(InstalledVersion.NA)
+      parseVersionFromLines(v, versionLinePrefix)
     case _ => InstalledVersion.Absent
   // TODO think about escaping the arguments
   def callAsString(args: String*): String =
     s"$name ${args.mkString(" ")}"
   def callAsString(args: List[String]): String =
     s"$name ${args.mkString(" ")}"
-  def tryCallLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
+  def tryCallLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Try[List[String]] =
     Try((name :: args.toList).callLines())
-  def run(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
+  def run(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     (name :: args).callUnit()
-  def run(args: String*)(using wd: Path | NotGiven[Path]): Unit =
+  def run(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     run(args.toList)
-  def runText(args: List[String])(using wd: Path | NotGiven[Path]): String =
+  def runText(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     (name :: args).callText()
-  def runText(args: String*)(using wd: Path | NotGiven[Path]): String =
+  def runText(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     runText(args.toList)
-  def runLines(args: String*)(using wd: Path | NotGiven[Path]): List[String] =
+  def runLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     (name :: args.toList).callLines()
-  def tryRunLines(args: String*)(using wd: Path | NotGiven[Path]): Try[List[String]] =
+  def tryRunLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Try[List[String]] =
     Try(runLines(args*))
-  def runVerbose(args: List[String])(using wd: Path | NotGiven[Path]): Unit =
+  def runVerbose(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     println(s"running ${callAsString(args*)}")
     (name :: args).callVerbose()
-  def runVerbose(args: String*)(using wd: Path | NotGiven[Path]): Unit =
+  def runVerbose(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     runVerbose(args.toList)
-  def runVerboseText(args: String*)(using wd: Path | NotGiven[Path]): String =
+  def runVerboseText(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     println(s"running ${callAsString(args*)}")
     (name :: args.toList).callVerboseText()
 
@@ -423,6 +502,11 @@ trait ExtensionManagement:
       println(s"extensions for $name are installed")
     else println(s"extensions for $name are already installed")
 
+trait Cleanup:
+  this: Tool =>
+  def isDirty(path: Path): Boolean
+  def cleanup(path: Path): Unit
+
 case class BuiltInTool(
   override val name: String,
   override val dependencies: List[Dependency] = List.empty,
@@ -433,22 +517,25 @@ case class BuiltInTool(
 
 trait Shell:
   this: Tool =>
-  def execute(script: String)(using wd: Path | NotGiven[Path]) = run("-c", script)
-  def executeText(script: String)(using wd: Path | NotGiven[Path]) =
+  def execute(script: String)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) = run("-c", script)
+  def executeText(script: String)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runText("-c", script)
-  def executeLines(script: String)(using wd: Path | NotGiven[Path]) =
+  def executeLines(script: String)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runLines("-c", script)
-  def executeVerbose(script: String)(using wd: Path | NotGiven[Path]) =
+  def executeVerbose(script: String)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runVerbose("-c", script)
-  def execute(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+  def execute(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     run((script.toString +: args)*)
-  def executeText(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+  def executeText(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runText((script.toString +: args)*)
-  def executeLines(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+  def executeLines(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runLines((script.toString +: args)*)
-  def executeVerbose(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+  def executeVerbose(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runVerbose((script.toString +: args)*)
-  def executeVerboseText(script: Path, args: String*)(using wd: Path | NotGiven[Path]) =
+  def executeVerboseText(script: Path, args: String*)(using
+    wd: MaybeGiven[Path],
+    env: MaybeGiven[Map[String, String]],
+  ) =
     runVerboseText((script.toString +: args)*)
 
 trait Font(
@@ -458,7 +545,7 @@ trait Font(
 ) extends Artifact:
   override def installedVersion(): InstalledVersion =
     val fonts = "fc-list".callText()
-    if fonts.contains(name) then InstalledVersion.NA else InstalledVersion.Absent
+    if fonts.contains(fontFilePrefix) then InstalledVersion.NA else InstalledVersion.Absent
 
 //added so tool functions like runText can be used in cases which don't clearly depend on a specific tool and hopefully avoids having to import os in most cases.
 //will also be used to hold higher level abstraction functions that use multiple tools and would only make sense in the context of this project
@@ -495,15 +582,6 @@ object xcodeSelect extends Tool("xcode-select"):
     pkgutil
       .pkgInfo("com.apple.pkg.CLTools_Executables")
       .pipe(parseVersionFromLines(_, "version: "))
-      .pipe {
-        case InstalledVersion.Version(v) =>
-          val semverSafe = v
-            .split("\\.")
-            .take(3)
-            .mkString(".")
-          InstalledVersion.Version(semverSafe)
-        case v => v
-      }
   override def install(requiredVersion: RequiredVersion) =
     // TODO decide on a way to hold, waiting for xcode-select to be installed
     run("--install")
@@ -531,9 +609,6 @@ object DownloadableFile:
     DownloadableFile(name, url, Some(expectedSha256sum))
 
 object curl extends Tool("curl"):
-  override def installedVersion(): InstalledVersion =
-    runLines("--version")
-      .pipe(parseVersionFromLines(_, "curl "))
   def get(url: String) = runText("-fsSL", url)
   def download(url: String, destination: Path): Unit =
     runVerbose("-C", "-", "-fSL", "-o", destination.toString, url)
@@ -588,10 +663,6 @@ case class DmgFile(dmg: Path) extends AutoCloseable:
     hdiutil.unmount(volume)
 
 object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
-  override def installedVersion(): InstalledVersion =
-    runText("--version") match
-      case "" => InstalledVersion.Absent
-      case v  => InstalledVersion.Version(v.linesIterator.next().stripPrefix("Homebrew ").trim())
   override def install(requiredVersion: RequiredVersion): Unit =
     val homebrewInstaller =
       curl get "https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
@@ -602,22 +673,48 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   def upgradeFormula(formula: String) = runVerbose("upgrade", formula)
   def formulaInfo(formula: String)    = runVerbose("info", formula)
 
-object scalaCli extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0")))):
-  override def installedVersion(): InstalledVersion =
-    Try(runLines("--version")) match
-      case Success(v) =>
-        parseVersionFromLines(v, "Scala CLI version: ")
-      case _ => InstalledVersion.Absent
+object scalaCli
+    extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0"))), versionLinePrefix = "Scala CLI version: ")
+    with Cleanup:
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =
     // it already checks if completions are installed, so no need to check for this case
     runVerbose("install", "completions")
+  // TODO check if a file is a scala script file before trying to run it
+  def execute(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    run((script.toString +: args)*)
+  def executeText(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    runText((script.toString +: args)*)
+  def executeLines(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    runLines((script.toString +: args)*)
+  def executeVerbose(script: Path, args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    runVerbose((script.toString +: args)*)
+  def executeVerboseText(script: Path, args: String*)(using
+    wd: MaybeGiven[Path],
+    env: MaybeGiven[Map[String, String]],
+  ) =
+    runVerboseText((script.toString +: args)*)
+
+  private def dirtySubFolders(path: Path) =
+    os.walk(path).filter(_.last == ".scala-build")
+    // TODO filter the ones we have no write access to
+  override def isDirty(path: Path): Boolean =
+    // for safety, we require that the path is at least one level below the home folder
+    require(
+      path.relativeTo(os.home).segments.size >= 1,
+      s"Path $path is not below the home folder",
+    )
+    println(
+      s"Checking if $path is dirty by recursively looking for .scala-build folders we could potentially remove...",
+    )
+    dirtySubFolders(path).nonEmpty
+  override def cleanup(path: Path): Unit =
+    println(s"Cleaning up $path from scala-cli .scala-build folders...")
+    // TODO confirmation for destructive operations
+    dirtySubFolders(path).foreach(os.remove.all(_))
 
 object python extends Tool("python") with Shell:
-  override def installedVersion(): InstalledVersion =
-    runLines("--version")
-      .pipe(parseVersionFromLines(_, "Python "))
   def packageVersion(packageName: String): InstalledVersion =
     Try(bash.executeText(s"python -c \"import $packageName; print($packageName.__version__)\"")) match
       case Failure(e) =>

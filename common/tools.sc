@@ -23,6 +23,10 @@ object hackNerdFont extends Font("font-hack-nerd-font", "HackNerdFont"):
     super.install(requiredVersion)
 
 object spaceshipPrompt extends Tool("spaceship-prompt", RequiredVersion.any(zsh, hackNerdFont)):
+  override def installedVersion(): InstalledVersion =
+    System.getenv("SPACESHIP_VERSION") match
+      case null => InstalledVersion.Absent
+      case v    => InstalledVersion.Version(v)
   override def install(requiredVersion: RequiredVersion): Unit =
     super.install(requiredVersion)
     appendLine(
@@ -46,32 +50,28 @@ object iterm2 extends Tool("iterm2"):
   override def path(): Option[Path] =
     mdfind
       .findByBundleId("com.googlecode.iterm2")
+  override def installedVersion(): InstalledVersion =
+    path().map { path =>
+      val infoPlist = path / "Contents" / "Info.plist"
+      val version   = s"defaults read ${infoPlist.toString} CFBundleShortVersionString".callText()
+      InstalledVersion.Version(version)
+    }
+      .getOrElse(InstalledVersion.Absent)
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask(name)
 
 object fig extends Tool("fig")
 
-object p7zip extends Tool("7za"):
+object p7zip extends Tool("7za", versionLinePrefix = "p7zip Version "):
   override def installedVersion(): InstalledVersion =
-    // the command returns multiple lines, but the one we want looks like "p7zip Version 17.05 (locale=utf8,Utf16=on,HugeFiles=on,64 bits,10 CPUs LE)"
-    def parseVersionLine(line: String) =
-      line.split(" ").toList match
-        case _ :: "Version" :: v :: _ => Some(v)
-        case _                        => None
-    def parseVersion(lines: List[String]) =
-      lines
-        .map(parseVersionLine)
-        .collectFirst { case Some(v) => v }
-        .getOrElse("") match
-        case "" => InstalledVersion.Absent
-        case v  => InstalledVersion.Version(v)
     tryRunLines("-version") match
       // 7za is a funny command that outputs the version and then exits with an error code 🤷🏽‍♂️
       // the Absent case is only when the output doesn't contain the version line
       case Success(v) =>
-        parseVersion(v)
+        parseVersionFromLines(v, versionLinePrefix)
       case Failure(e) =>
-        parseVersion(e.getMessage().linesIterator.toList)
+        val lines = e.getMessage().linesIterator.toList
+        parseVersionFromLines(lines, versionLinePrefix)
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installFormula("p7zip")
   def extract(archive: Path, destination: Path): Unit =
@@ -94,11 +94,6 @@ object vscode extends Tool("code") with ExtensionManagement:
   )
     .map(e => e.extensionId -> e)
     .toMap
-  override def installedVersion(): InstalledVersion =
-    Try(runText("--version")) match
-      case Success(v) =>
-        InstalledVersion.Version(v.linesIterator.next().trim())
-      case _ => InstalledVersion.Absent
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask("visual-studio-code")
   override def installedExtensionIds(): Set[String] =
