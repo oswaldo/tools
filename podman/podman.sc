@@ -17,6 +17,7 @@ case class Machine(name: String, default: Boolean, status: MachineStatus = Machi
 
 object podman extends Tool("podman", versionLinePrefix = "podman version "):
   object machine:
+    // TODO parse the content of podman machine for extra properties inspect instead of parsing the output of podman machine list
     private val ListColumns = List("NAME", "VM TYPE", "CREATED", "LAST UP", "CPUS", "MEMORY", "DISK SIZE")
     def list(): List[Machine] =
       val lines = podman.runLines("machine", "list")

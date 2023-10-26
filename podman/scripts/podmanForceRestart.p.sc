@@ -1,6 +1,6 @@
 #!/usr/bin/env -S scala-cli shebang -S 3
 
-// This was generated with some scaffold to easy the creation of a new program.
+// Utility script to force the restart of a podman machine
 
 //> using toolkit latest
 //> using dep "com.lihaoyi::pprint::0.8.1"
@@ -19,26 +19,32 @@ import podman.*
 given Array[String] = args
 
 case class PodmanForceRestartArgs(
-  someRequiredArgument: Int,
-  someOptionalArgument: String,
+  machineName: Option[String],
 ):
   require(true, "some characteristic needs to be tested!")
 
 val podmanForceRestartArgs = Try {
   PodmanForceRestartArgs(
-    someRequiredArgument = argRequired(0, "someRequiredArgument is required!"),
-    someOptionalArgument = arg(1, "someDefaultValue"),
+    machineName = arg(0, Option.empty[String]),
   )
 } match
   case Success(args) => args
   case Failure(e) =>
     throw new Exception(
       """Invalid arguments.
-        |  Usage:   podmanForceRestart <someRequiredArgument> [<someOptionalArgument>]
-        |  Example: podmanForceRestart 123 "Hello World!"
-        |    Some explanation of what happens after calling the program""".stripMargin,
+        |  Usage:   podmanForceRestart [<machineName>]
+        |  Example: podmanForceRestart my-machine
+        |    This will force the restart of a machine called my-machine
+        |    meaning, if it is stopped, it will start, if it is started,
+        |    it will stop and start and if some other machine is started,
+        |    that will be stopped before my-machine is started as with
+        |    podman there can be only one vm started at a time.
+        |    Cherry on top? If the machine doesn't exists, it will be
+        |    created and started.
+        |  Example: podmanForceRestart
+        |    Forces the restart of the default machine
+        |  """.stripMargin,
       e,
     )
 import podmanForceRestartArgs.*
-//do some fancy stuff
-pprint.pprintln(podmanForceRestartArgs)
+podman.machine.forceRestart(machineName)
