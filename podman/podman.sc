@@ -90,10 +90,10 @@ object podman extends Tool("podman", versionLinePrefix = "podman version "):
     def restart(machineName: Option[String]): Unit =
       val machine = apply(machineName)
       machine.status match
-        case MachineStatus.Running =>
+        case MachineStatus.Running | MachineStatus.Unknown =>
           stop(machine)
           start(machine)
-        case MachineStatus.Stopped | MachineStatus.Unknown =>
+        case MachineStatus.Stopped =>
           start(machine)
         case MachineStatus.NotCreated =>
           println(s"Machine ${machine.name} not created")
@@ -145,9 +145,7 @@ object podman extends Tool("podman", versionLinePrefix = "podman version "):
         case MachineStatus.Running | MachineStatus.Unknown =>
           forceStop(machine)
           forceStart(machine)
-        case MachineStatus.Stopped =>
-          forceStart(machine)
-        case MachineStatus.NotCreated =>
+        case MachineStatus.Stopped | MachineStatus.NotCreated =>
           forceStart(machine)
     def forceRm(machineName: Option[String]): Unit =
       val machine = apply(machineName)

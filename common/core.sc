@@ -163,32 +163,32 @@ def linkScripts(scriptsFolder: Path, linksFolder: Path) =
     }
 
 case class StringReplacement(
-  val originaFragment: String,
+  val originalFragment: String,
   val replacement: String,
 )
 
 def doReplacements(orignal: String, replacements: StringReplacement*): String =
   replacements.foldLeft(orignal) { (result, replacement) =>
-    result.replace(replacement.originaFragment, replacement.replacement)
+    result.replace(replacement.originalFragment, replacement.replacement)
   }
 
 val replaceWrapperTemplateComment = StringReplacement(
-  originaFragment = "// This is a template file for wrapping a tool script.",
+  originalFragment = "// This is a template file for wrapping a tool script.",
   replacement = "// This is a generated wrapper script.",
 )
 
 val replaceNoEditsComment = StringReplacement(
-  originaFragment = "// You are not expected to edit this file directly unless you are working on the oztools itself.",
+  originalFragment = "// You are not expected to edit this file directly unless you are working on the oztools itself.",
   replacement = "// You are not expected to edit this file directly.",
 )
 
 val replaceCoreScAbsolutePath = StringReplacement(
-  originaFragment = "../../core.sc",
+  originalFragment = "../../core.sc",
   replacement = (os.pwd / "common" / "core.sc").toString,
 )
 
 val replaceOsPwdToolsAbsoluteScript = StringReplacement(
-  originaFragment = "given wd: Path = os.pwd",
+  originalFragment = "given wd: Path = os.pwd",
   replacement = s"given wd: Path = os.root / os.RelPath(\"${os.pwd.toString
       // dropping the first (now redundant) slash
       .drop(1)}\")",
@@ -199,28 +199,30 @@ val scriptWrapperTemplatePath = os.pwd / "common" / "scripts" / "template" / "sc
 val EnvCallerFolder = "OZTOOLS_CALLER_FOLDER"
 
 def wrapScripts(scriptsFolder: Path, installFolder: Path) =
-  val scriptWrapper =
-    doReplacements(
-      os.read(scriptWrapperTemplatePath),
-      replaceWrapperTemplateComment,
-      replaceNoEditsComment,
-      replaceCoreScAbsolutePath,
-      replaceOsPwdToolsAbsoluteScript,
-    )
-  os.list(scriptsFolder)
-    .filter(_.last.endsWith(".p.sc"))
-    .foreach { script =>
-      if !os.perms(script).contains(PosixFilePermission.OWNER_EXECUTE) then
-        println(s"  Adding executable permission to $script")
-        os.perms.set(script, "rwxr-xr-x")
-      val scriptName = script.last
-      val wrapper    = installFolder / scriptName.stripSuffix(".p.sc")
-      println(s"  ${if os.exists(wrapper) then "Updating" else "Creating"} wrapper $wrapper")
-      val specificWrapper = scriptWrapper
-        .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
-      os.write.over(wrapper, specificWrapper)
-      os.perms.set(wrapper, "rwxr-xr-x")
-    }
+  if (os.exists(scriptsFolder)) then
+    val scriptWrapper =
+      doReplacements(
+        os.read(scriptWrapperTemplatePath),
+        replaceWrapperTemplateComment,
+        replaceNoEditsComment,
+        replaceCoreScAbsolutePath,
+        replaceOsPwdToolsAbsoluteScript,
+      )
+    os.list(scriptsFolder)
+      .filter(_.last.endsWith(".p.sc"))
+      .foreach { script =>
+        if !os.perms(script).contains(PosixFilePermission.OWNER_EXECUTE) then
+          println(s"  Adding executable permission to $script")
+          os.perms.set(script, "rwxr-xr-x")
+        val scriptName = script.last
+        val wrapper    = installFolder / scriptName.stripSuffix(".p.sc")
+        println(s"  ${if os.exists(wrapper) then "Updating" else "Creating"} wrapper $wrapper")
+        val specificWrapper = scriptWrapper
+          .replace("echo", s"./${script.relativeTo(os.pwd).toString}")
+        os.write.over(wrapper, specificWrapper)
+        os.perms.set(wrapper, "rwxr-xr-x")
+      }
+  else println(s"  Skipping wrapping scripts in $scriptsFolder as it doesn't exist")
 
 val InstallFolder = os.home / "oztools"
 

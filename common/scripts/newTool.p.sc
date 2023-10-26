@@ -41,16 +41,16 @@ if (!os.exists(toolFolder)) os.makeDir.all(toolFolder)
 val templateFile = os.pwd / "common" / "scripts" / "template" / "newTool.t.sc"
 val toolFile     = toolFolder / (toolName + ".sc")
 val replaceNewToolTemplateComment = StringReplacement(
-  originaFragment = "// This is a template file for creating some scaffold for a new tool.",
+  originalFragment = "// This is a template file for creating some scaffold for a new tool.",
   replacement = s"// Wrapper script for $toolName",
 )
 val removeNoEditsComment = StringReplacement(
-  originaFragment =
+  originalFragment =
     "// You are not expected to edit this file directly unless you are working on the oztools itself.\n",
   replacement = s"",
 )
 val replaceToolName = StringReplacement(
-  originaFragment = "newTool",
+  originalFragment = "newTool",
   replacement = toolName,
 )
 val toolFileContents = doReplacements(

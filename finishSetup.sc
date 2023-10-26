@@ -31,4 +31,5 @@ installWrappers(
     os.pwd / "llm" / "scripts",
     os.pwd / "mac" / "scripts",
     os.pwd / "transformers" / "scripts",
+    os.pwd / "podman" / "scripts",
 )

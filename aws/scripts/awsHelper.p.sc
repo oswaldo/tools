@@ -5,7 +5,7 @@
 //> using file "../../common/tools.sc"
 //> using file "../aws.sc"
 //> using toolkit latest
-//> using dep com.lihaoyi::pprint::0.7.0
+//> using dep "com.lihaoyi::pprint::0.8.1"
 
 import core.*
 import tools.*
