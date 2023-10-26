@@ -9,24 +9,7 @@ import tools.*
 import util.*
 
 
-object displayplacer extends Tool("displayplacer"):
-
-  override def installedVersion(): InstalledVersion =
-    val versionLinePrefix = "displayplacer v"
-    Try(runText("--version")) match
-      case Success(v) =>
-        Some(v).filter(_.contains(versionLinePrefix)).map(_.trim) match
-          case None => InstalledVersion.NA
-          case Some(v) =>
-            InstalledVersion.Version(
-              v.linesIterator
-                .find(_.startsWith(versionLinePrefix))
-                .get
-                .stripPrefix(versionLinePrefix)
-                .split(" ")
-                .head,
-            )
-      case _ => InstalledVersion.Absent
+object displayplacer extends Tool("displayplacer", versionLinePrefix = "displayplacer v"):
 
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.tap("jakehilborn/jakehilborn")

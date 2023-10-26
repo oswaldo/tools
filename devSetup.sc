@@ -6,12 +6,14 @@
 //> using file "osboxes/osboxes.sc"
 //> using file "vm/virtualBox.sc"
 //> using file "aws/aws.sc"
+//> using file "podman/podman.sc"
 //> using toolkit latest
 
 import core.*
 import tools.*
 import virtualBox.*
 import aws.*
+import podman.*
 
 //TODO think about saving last time the setup was run, and only running if it's been a while
 
@@ -24,11 +26,14 @@ installIfNeeded(
     vscode,
 
     //virtualBox for running VMs
-    // virtualBox,
+    virtualBox,
 
     //aws
     aws,
     awsSso,
+
+    //podman
+    podman,
 )
 vscode.installExtensionsIfNeeded(
     vscode.copilotExtension,

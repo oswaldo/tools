@@ -18,7 +18,7 @@ case class CallerIdentity(
   @key("Arn") arn: String,
 ) derives ReadWriter
 
-object aws extends Tool("aws"):
+object aws extends Tool("aws", versionLinePrefix = "aws-cli/"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "awscli"
   object sts:
