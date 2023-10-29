@@ -4,8 +4,9 @@
 //> using toolkit latest
 
 import core.*
+import core.given
 import tools.*
-import scala.util.NotGiven
+import os.{read => osRead, *}
 import upickle.default.*
 import upickle.implicits.key
 import util.chaining.scalaUtilChainingOps
@@ -22,7 +23,7 @@ object aws extends Tool("aws", versionLinePrefix = "aws-cli/"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "awscli"
   object sts:
-    def getCallerIdentity()(using profile: SsoProfile | NotGiven[SsoProfile]) =
+    def getCallerIdentity()(using profile: MaybeGiven[SsoProfile]) =
       val arguments = List("sts", "get-caller-identity")
       profile match
         case profile: SsoProfile =>
@@ -35,9 +36,9 @@ object aws extends Tool("aws", versionLinePrefix = "aws-cli/"):
 object awsSso extends Tool("aws-sso", RequiredVersion.any(aws)):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "aws-sso-cli"
-  override def installedVersion() =
+  override def installedVersion()(using wd: MaybeGiven[Path]) =
     InstalledVersion.parse("AWS SSO CLI Version ", tryRunLines("version"))
-  def exec[T](arguments: List[String])(using profile: SsoProfile | NotGiven[SsoProfile], reader: Reader[T]): T =
+  def exec[T](arguments: List[String])(using profile: MaybeGiven[SsoProfile], reader: Reader[T]): T =
     profile match
       case profile: SsoProfile =>
         val wrappedArguments = List("exec", "-p", profile.name, "--") ++ arguments

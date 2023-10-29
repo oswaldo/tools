@@ -65,3 +65,5 @@ if (!os.exists(toolFile))
   os.write(toolFile, toolFileContents)
 else 
   println(s"Tool file $toolFile already exists, skipping...")
+
+//TODO think about adding a new tool automatically to a collection (in finishSetup.sc or devSetup.sc)
