@@ -11,7 +11,7 @@ import core.*
 import util.*
 
 given wd: Path = os.pwd
-given env: Map[String, String] = Map { 
+given env: Map[String, String] = Map {
   EnvCallerFolder -> os.pwd.toString
 }
 val argList = Try(args.toList).getOrElse(Nil)

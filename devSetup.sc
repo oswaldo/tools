@@ -24,36 +24,36 @@ import virtualBox.*
 println("Finishing setup...")
 installIfNeeded(
 
-    //aws
-    aws,
-    awsSso,
+  //aws
+  aws,
+  awsSso,
 
-    //fig for some awesome terminal autocomplete
-    fig,
+  //fig for some awesome terminal autocomplete
+  fig,
 
-    //npm
-    // npm,
-    docsify,
+  //npm
+  // npm,
+  docsify,
 
-    //podman
-    podman,
-    
-    //virtualBox for running VMs
-    virtualBox,
+  //podman
+  podman,
 
-    //vscode is the editor being used for development of this project
-    vscode,
+  //virtualBox for running VMs
+  virtualBox,
+
+  //vscode is the editor being used for development of this project
+  vscode,
 
 )
 
 
 
 vscode.installExtensionsIfNeeded(
-    vscode.copilotExtension,
-    vscode.copilotChatExtension,
-    vscode.scalaLangExtension,
-    vscode.scalametalsExtension,
-    vscode.vscodeIconsExtension,
+  vscode.copilotExtension,
+  vscode.copilotChatExtension,
+  vscode.scalaLangExtension,
+  vscode.scalametalsExtension,
+  vscode.vscodeIconsExtension,
 )
 // virtualBox.constructVmIfNeeded(virtualBoxImage.ubuntu23_04)
 
