@@ -5,9 +5,9 @@
 //> using file "../../common/tools.sc"
 //> using file "../displayplacer.sc"
 
-import core.* 
+import core.*
 import core.given
-import tools.* 
+import tools.*
 import displayplacer.*
 import displayplacer.given
 

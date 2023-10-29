@@ -29,8 +29,7 @@ val generationArgs = Try(
     throw new Exception(
       """Invalid arguments.
         |  Usage:   transformersHelper <input> [[[<model>] <modelRevision>] <maxLength>]
-        |  Example: transformersHelper "Hello world" "EleutherAI/gpt-neo-125M" main 1000"""
-      .stripMargin,
+        |  Example: transformersHelper "Hello world" "EleutherAI/gpt-neo-125M" main 1000""".stripMargin,
       e,
     )
 import generationArgs.*

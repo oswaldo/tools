@@ -72,7 +72,7 @@ val replaceImportComment = StringReplacement(
     // for the names, generate lines like:
     // import <name>.*
     val namesFromParent = programFolder.last == "scripts"
-    val scripts         = os
+    val scripts = os
       .list(if namesFromParent then programFolder / os.up else programFolder)
       .filter { f =>
         val name = f.last

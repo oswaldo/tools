@@ -19,28 +19,28 @@ import podman.*
 
 println("Finishing setup...")
 installIfNeeded(
-    //fig for some awesome terminal autocomplete
-    fig,
+  // fig for some awesome terminal autocomplete
+  fig,
 
-    //vscode is the editor being used for development of this project
-    vscode,
+  // vscode is the editor being used for development of this project
+  vscode,
 
-    //virtualBox for running VMs
-    virtualBox,
+  // virtualBox for running VMs
+  virtualBox,
 
-    //aws
-    aws,
-    awsSso,
+  // aws
+  aws,
+  awsSso,
 
-    //podman
-    podman,
+  // podman
+  podman,
 )
 vscode.installExtensionsIfNeeded(
-    vscode.copilotExtension,
-    vscode.copilotChatExtension,
-    vscode.scalaLangExtension,
-    vscode.scalametalsExtension,
-    vscode.vscodeIconsExtension,
+  vscode.copilotExtension,
+  vscode.copilotChatExtension,
+  vscode.scalaLangExtension,
+  vscode.scalametalsExtension,
+  vscode.vscodeIconsExtension,
 )
 // virtualBox.constructVmIfNeeded(virtualBoxImage.ubuntu23_04)
 println("Finished setup!")
