@@ -23,7 +23,7 @@ object hackNerdFont extends Font("font-hack-nerd-font", "HackNerdFont"):
     super.install(requiredVersion)
 
 object spaceshipPrompt extends Tool("spaceship-prompt", RequiredVersion.any(zsh, hackNerdFont)):
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     System.getenv("SPACESHIP_VERSION") match
       case null => InstalledVersion.Absent
       case v    => InstalledVersion.Version(v)
@@ -50,7 +50,7 @@ object iterm2 extends Tool("iterm2"):
   override def path(): Option[Path] =
     mdfind
       .findByBundleId("com.googlecode.iterm2")
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     path().map { path =>
       val infoPlist = path / "Contents" / "Info.plist"
       val version   = s"defaults read ${infoPlist.toString} CFBundleShortVersionString".callText()
@@ -63,7 +63,7 @@ object iterm2 extends Tool("iterm2"):
 object fig extends Tool("fig")
 
 object p7zip extends Tool("7za", versionLinePrefix = "p7zip Version "):
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     tryRunLines("-version") match
       // 7za is a funny command that outputs the version and then exits with an error code 🤷🏽‍♂️
       // the Absent case is only when the output doesn't contain the version line

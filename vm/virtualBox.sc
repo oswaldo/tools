@@ -36,7 +36,7 @@ object virtualBox extends Tool("vboxmanage"):
       case _ =>
         brew.installFormula("virtualbox")
 
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     tryRunLines("--version") match
       case Success(v) =>
         InstalledVersion.Version(v.head.trim().replace("_", "-").replace("BETA", "BETA.").replace("r", "+r"))
