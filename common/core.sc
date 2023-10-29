@@ -361,7 +361,7 @@ case class Dependency(artifact: Artifact, version: RequiredVersion):
 trait Artifact:
   val name: String
   val dependencies: List[Dependency]       = List.empty
-  def installedVersion(): InstalledVersion = InstalledVersion.NA
+  def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion = InstalledVersion.NA
   def isInstalled(): Boolean               = installedVersion() != InstalledVersion.Absent
   def isAbsent(): Boolean                  = installedVersion() == InstalledVersion.Absent
   def installDependencies(): Unit =
@@ -432,7 +432,7 @@ trait Tool(
   val versionLinePrefix: String = "",
 ) extends Artifact:
   def path() = which(name)
-  override def installedVersion() = Try(runLines("--version")) match
+  override def installedVersion()(using wd: MaybeGiven[Path]) = Try(runLines("--version")) match
     case Success(v) =>
       parseVersionFromLines(v, versionLinePrefix)
     case _ => InstalledVersion.Absent
@@ -545,7 +545,7 @@ trait Font(
   val fontFilePrefix: String,
   override val dependencies: List[Dependency] = List.empty,
 ) extends Artifact:
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     val fonts = "fc-list".callText()
     if fonts.contains(fontFilePrefix) then InstalledVersion.NA else InstalledVersion.Absent
 
@@ -580,7 +580,7 @@ object xcodeSelect extends Tool("xcode-select"):
     case Success(path) if path.nonEmpty => Some(Path(path)).filter(os.exists)
     case _                              => None
   // TODO think if we should support a case like "for checking the xcode command line tools version, we need to call pkgutil, but the key changes depending on MacOS version". Should macos show up as a Tool?
-  override def installedVersion(): InstalledVersion =
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     pkgutil
       .pkgInfo("com.apple.pkg.CLTools_Executables")
       .pipe(parseVersionFromLines(_, "version: "))
@@ -717,7 +717,7 @@ object scalaCli
     dirtySubFolders(path).foreach(os.remove.all(_))
 
 object python extends Tool("python") with Shell:
-  def packageVersion(packageName: String): InstalledVersion =
+  def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =
     Try(bash.executeText(s"python -c \"import $packageName; print($packageName.__version__)\"")) match
       case Failure(e) =>
         println(s"  package $packageName not installed:\n${e.getMessage()}")
@@ -727,12 +727,12 @@ object python extends Tool("python") with Shell:
 //TODO think if python packages should be treated as we do with extensions or if we need another abstraction instead of Tool
 //TODO think about pro and cons of using one package manager for everything (in this case we are using brew instead of pip for python packages)
 object six extends Tool("six", RequiredVersion.any(python)):
-  override def installedVersion(): InstalledVersion =
-    python.packageVersion(name)
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
+    python.installedPackageVersion(name)
 
 object yaml extends Tool("yaml", RequiredVersion.any(python)):
-  override def installedVersion(): InstalledVersion =
-    python.packageVersion(name)
+  override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
+    python.installedPackageVersion(name)
 
 object git extends Tool("git"):
 
@@ -790,3 +790,39 @@ object git extends Tool("git"):
       throw new Exception(s"Remote $remoteName already exists with a different url")
     else println(s"$remoteName ($remoteUrl) remote already exists")
     subtreeAdd(subtreeFolder, remoteUrl, branch)
+
+  def repoRootPath()(using wd: MaybeGiven[Path]): Option[Path] =
+    Try(runText("rev-parse", "--show-toplevel")) match
+      case Success(path) if path.nonEmpty => Some(Path(path))
+      case _                              => None
+  
+  def isRepo()(using wd: MaybeGiven[Path]) =
+    repoRootPath().nonEmpty
+
+  def isPathIgnored(path: RelPath)(using wd: MaybeGiven[Path]) =
+    println(s"Checking if $path is ignored...")
+    Try(runText("check-ignore", path.toString).nonEmpty) match
+      case Success(_)  => true
+      case Failure(e: os.SubprocessException) 
+        if e.result.exitCode == 1 => false
+      case _ => throw new Exception(s"Failed to check if $path is ignored")
+
+  // TODO think about checking first if it is a repo, making it one if needed, stashing stuff if needed and only failing if it's dirty
+  def ignore(paths: RelPath*)(using wd: MaybeGiven[Path]) =
+    val ignorePaths = paths.filterNot(isPathIgnored(_))
+    if ignorePaths.isEmpty then println("Nothing to ignore")
+    else
+      println(s"Adding to .gitignore the following paths:\n${ignorePaths.mkString("\n")}")
+      val rootPath = wd match
+        case path: Path => path
+        case _          => os.pwd
+      val gitIgnorePath = rootPath / ".gitignore"
+      val gitIgnoreLines = Try(os.read.lines(gitIgnorePath)) match
+        case Success(lines) => lines
+        case _              => Nil
+      val newGitIgnoreLines = gitIgnoreLines ++ ignorePaths.map{ path =>
+        s"${path.toString}${if os.isDir(rootPath / path) then "/" else ""}"
+      }
+      os.write.over(gitIgnorePath, newGitIgnoreLines.mkString("", "\n", "\n"))
+
+end git
