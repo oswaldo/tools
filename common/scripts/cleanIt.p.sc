@@ -4,6 +4,7 @@
 //> using file "../core.sc"
 //> using file "../tools.sc"
 //> using file "../cleanup.sc"
+//> using file "../../sbt/sbt.sc"
 
 import cleanup.*
 import core.*

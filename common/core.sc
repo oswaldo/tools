@@ -1,5 +1,5 @@
 //> using toolkit latest
-//> using dep "io.kevinlee::just-semver::0.13.0"
+//> using dep "io.kevinlee::just-semver-core::0.13.0"
 //> using dep "com.lihaoyi::pprint::0.8.1"
 
 import os.*
@@ -23,8 +23,7 @@ def arg[T: ClassTag](i: Int, default: => (T | String))(using args: Array[String]
         case s: String =>
           parser(s).getOrElse(throw new Exception(s"Arg $i: Parsing the default value $s resulted in None"))
         case v: T => v
-        // this shouldn't happen as the default should be either a string or a T
-        case v => throw new Exception(s"Arg $i: Unexpected value $v of type ${v.getClass}")
+        case null => throw new Exception(s"Arg $i: Unexpected null default value")
 
 def argRequired[T: ClassTag](i: Int, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
   arg(i, throw new Exception(s"Arg $i: $missingMessage"))
@@ -197,6 +196,14 @@ val replaceNoEditsComment = StringReplacement(
 val replaceCoreScAbsolutePath = StringReplacement(
   originalFragment = "../../core.sc",
   replacement = (os.pwd / "common" / "core.sc").toString,
+)
+
+def replaceCoreScCommonPath(path: Path) = StringReplacement(
+  originalFragment = "../../core.sc",
+  replacement = {
+    //we need to check the depth of the path relative to the common folder, and then generate the relative path to the common folder. for instance, if the new script being generated will live in xzy/scripts, the relative path to the common folder will be ../../common/core.sc
+    "../" * path.relativeTo(os.pwd / "common").segments.size + "common/core.sc"
+  },
 )
 
 val replaceOsPwdToolsAbsoluteScript = StringReplacement(
@@ -526,10 +533,63 @@ trait ExtensionManagement:
       println(s"extensions for $name are installed")
     else println(s"extensions for $name are already installed")
 
-trait Cleanup:
+trait ManagesSource:
+  def checkRequirements(path: Path): Unit =
+    // TODO filter the ones we have no write access to
+    // for safety, we require that the path is at least one level below the home folder
+    require(
+      path.relativeTo(os.home).segments.size >= 1,
+      s"Path $path is not below the home folder",
+    )
+  def subpathRecursiveExists(path: Path, subpath: String): Boolean =
+    checkRequirements(path)
+    os.walk(path).exists(_.last == subpath)
+  def subpathRecursiveFilter(path: Path, subpath: String): List[Path] =
+    checkRequirements(path)
+    os.walk(path).filter(_.last == subpath).toList
+
+trait CompilePath:
+  val compilePathName: String
+
+trait CanClean extends ManagesSource with CompilePath:
   this: Tool =>
-  def isDirty(path: Path): Boolean
-  def cleanup(path: Path): Unit
+  def isDirty(path: Path): Boolean =
+    println(
+      s"Checking if $path is dirty by recursively looking for $compilePathName folders we could potentially remove...",
+    )
+    subpathRecursiveExists(path, compilePathName)
+  def cleanup(path: Path): Unit =
+    println(s"Cleaning up $path from $name's $compilePathName folders...")
+    // TODO confirmation for destructive operations
+    subpathRecursiveFilter(path, compilePathName).foreach { buildPath =>
+      println(s"  Removing $buildPath")
+      os.remove.all(buildPath)
+    }
+
+// TODO for this operations that run an external build tool, check if the implicit path is a file or folder, and look for the relevant files if it's a folder
+trait CanCompile extends ManagesSource with CompilePath:
+  this: Tool =>
+  def compile(using path: Path): Unit =
+    runVerbose("compile")
+
+trait CanTest extends ManagesSource:
+  this: Tool =>
+  def test(using path: Path): Unit =
+    runVerbose("test")
+
+trait CanRun extends ManagesSource:
+  def run(using path: Path): Unit
+
+trait CanPackage extends ManagesSource:
+  def pack(using path: Path): Unit
+
+trait CanBuild extends CanCompile with CanTest with CanRun with CanPackage:
+  this: Tool =>
+  def build(using path: Path): Unit =
+    checkRequirements(path)
+    compile
+    test
+    pack
 
 case class BuiltInTool(
   override val name: String,
@@ -704,7 +764,8 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
 
 object scalaCli
     extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0"))), versionLinePrefix = "Scala CLI version: ")
-    with Cleanup:
+    with CanCompile
+    with CanClean:
   override def install(requiredVersion: RequiredVersion): Unit =
     brew installFormula "Virtuslab/scala-cli/scala-cli"
   def installCompletions() =
@@ -726,23 +787,7 @@ object scalaCli
   ) =
     runVerboseText((script.toString +: args)*)
 
-  private def dirtySubFolders(path: Path) =
-    os.walk(path).filter(_.last == ".scala-build")
-    // TODO filter the ones we have no write access to
-  override def isDirty(path: Path): Boolean =
-    // for safety, we require that the path is at least one level below the home folder
-    require(
-      path.relativeTo(os.home).segments.size >= 1,
-      s"Path $path is not below the home folder",
-    )
-    println(
-      s"Checking if $path is dirty by recursively looking for .scala-build folders we could potentially remove...",
-    )
-    dirtySubFolders(path).nonEmpty
-  override def cleanup(path: Path): Unit =
-    println(s"Cleaning up $path from scala-cli .scala-build folders...")
-    // TODO confirmation for destructive operations
-    dirtySubFolders(path).foreach(os.remove.all(_))
+  override val compilePathName = ".scala-build"
 
 object python extends Tool("python") with Shell:
   def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =
