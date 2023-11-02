@@ -16,7 +16,8 @@ case class NewProgramArgs(
   programFolder: Path,
   programName: String,
 ):
-  require(programName.nonEmpty, "programName is required!")
+  // TODO think about adding refinement types to the toolkit
+  require(programName.nonEmpty, "programName is cannot be empty!")
 
 val newProgramArgs = Try {
   NewProgramArgs(

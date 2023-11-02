@@ -12,4 +12,4 @@ import tools.*
 import util.*
 import osboxes.*
 
-vmImage.ubuntu23_04.download()
+osboxes.vmImage.ubuntu23_04.download()

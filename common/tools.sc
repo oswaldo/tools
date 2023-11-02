@@ -96,6 +96,15 @@ object vscode extends Tool("code") with ExtensionManagement:
     .toMap
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installCask("visual-studio-code")
+  override def postInstall(requiredVersion: RequiredVersion): Unit =
+    println("Installing vscode default extensions...")
+    installExtensionsIfNeeded(
+      copilotExtension,
+      copilotChatExtension,
+      scalaLangExtension,
+      scalametalsExtension,
+      vscodeIconsExtension,
+    )
   override def installedExtensionIds(): Set[String] =
     runLines("--list-extensions").toSet
   override def installExtensions(extensions: ToolExtension*): Unit =

@@ -70,7 +70,7 @@ object displayplacer extends Tool("displayplacer", versionLinePrefix = "displayp
     val builtinTpe      = "MacBook built in screen"
     println(
       "current displays: \n" + currentDisplays
-        .map(d => s"  id: ${d.id}, type: ${d.tpe}, resolution: ${d.resolution._1}x${d.resolution._2}", )
+        .map(d => s"  id: ${d.id}, type: ${d.tpe}, resolution: ${d.resolution._1}x${d.resolution._2}")
         .mkString("\n"),
     )
     val (builtin, external) =

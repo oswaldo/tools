@@ -11,10 +11,10 @@ import util.*
 import os.*
 import java.util.UUID
 
-enum virtualBoxImage(val vmImage: vmImage, val vmName: String, val osType: String):
+enum virtualBoxImage(val vmImage: osboxes.vmImage, val vmName: String, val osType: String):
   case ubuntu23_04
       extends virtualBoxImage(
-        vmImage.ubuntu23_04,
+        osboxes.vmImage.ubuntu23_04,
         vmName = "Constructed Ubuntu 23.04 Lunar Lobster",
         osType = "Ubuntu_64",
       )
