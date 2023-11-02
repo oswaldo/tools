@@ -11,11 +11,6 @@ import core.given
 import os.*
 
 given Array[String] = args
-val folder: Path = arg(
-  0,
-  Option(System.getenv(EnvCallerFolder))
-    .map(Path(_))
-    .getOrElse(os.pwd),
-)
+val folder: Path    = argCallerOrCurrentFolder(0)
 val callerFolder =
   cleanup(folder)

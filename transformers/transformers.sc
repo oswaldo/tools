@@ -46,7 +46,7 @@ case class GenerationArgs(
 
 object transformers extends Tool("transformers", RequiredVersion.any(python)):
   override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
-    python.packageVersion(name)
+    python.installedPackageVersion(name)
 
   def generate(args: GenerationArgs): String =
     import args.*

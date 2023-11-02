@@ -11,7 +11,7 @@ import util.*
 
 given Array[String] = args
 
-case class InstallSubtreeArgs(
+case class PullSubtreeArgs(
   subtreeFolder: RelPath,
   remoteName: String,
   remoteUrl: String,
@@ -22,8 +22,8 @@ case class InstallSubtreeArgs(
   require(remoteUrl.nonEmpty, "remoteUrl is cannot be empty!")
   require(branch.nonEmpty, "branch is cannot be empty!")
 
-val installSubtreeArgs = Try {
-  InstallSubtreeArgs(
+val pullSubtreeArgs = Try {
+  PullSubtreeArgs(
     subtreeFolder = argRequired[RelPath](0, "subtreeFolder is required!"),
     remoteName = argRequired(1, "remoteName is required!"),
     remoteUrl = argRequired(2, "remoteUrl is required!"),
@@ -35,16 +35,16 @@ val installSubtreeArgs = Try {
   case Failure(e) =>
     throw new Exception(
       """Invalid arguments.
-        |  Usage:   gitInstallSubtree <subtreeFolder> <remoteName> <remoteUrl> [<branch>] [<localRepoFolder>]
-        |  Example: gitInstallSubtree oztools "subtree-oztools" https://github.com/oswaldo/tools.git main ~/git/my-project
-        |    will install the subtree oztools from the given remote
-        |  Example: gitInstallSubtree oztools "subtree-oztools" https://github.com/oswaldo/tools.git
-        |    will install the subtree oztools from the given remote's main branch in the current folder
+        |  Usage:   gitPullSubtree <subtreeFolder> <remoteName> <remoteUrl> [<branch>] [<localRepoFolder>]
+        |  Example: gitPullSubtree oztools "subtree-oztools" https://github.com/oswaldo/tools.git main ~/git/my-project
+        |    will pull the subtree oztools from the given remote
+        |  Example: gitPullSubtree oztools "subtree-oztools" https://github.com/oswaldo/tools.git
+        |    will pull the subtree oztools from the given remote's main branch in the current folder
         """.stripMargin,
     )
 
-import installSubtreeArgs.*
-pprint.pprintln(installSubtreeArgs)
+import pullSubtreeArgs.*
+pprint.pprintln(pullSubtreeArgs)
 
-println(s"""Installing subtree $subtreeFolder from $remoteName ($remoteUrl) to $localRepoFolder...""")
-git.installSubtree(localRepoFolder, subtreeFolder, remoteName, remoteUrl, branch)
+println(s"""Pulling subtree $subtreeFolder from $remoteName ($remoteUrl) to $localRepoFolder...""")
+git.pullSubtree(localRepoFolder, subtreeFolder, remoteName, remoteUrl, branch)
