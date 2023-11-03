@@ -8,7 +8,8 @@ import util.*
 import util.chaining.scalaUtilChainingOps
 import scala.annotation.tailrec
 
-object sbt extends Tool("sbt", versionLinePrefix = "sbt script version: ") with CanBuild:
+trait SbtFlavor extends CanBuild:
+  this: Tool =>
   override val compilePathName = "target"
   override def canCompile()(using path: Path): Boolean =
     os.exists(path / "build.sbt")
@@ -17,15 +18,11 @@ object sbt extends Tool("sbt", versionLinePrefix = "sbt script version: ") with 
   override def pack()(using path: Path): Unit =
     runVerbose("package")
 
-object sbtn extends BuiltInTool("sbtn", RequiredVersion.any(sbt)) with CanBuild:
+object sbt extends Tool("sbt", versionLinePrefix = "sbt script version: ") with SbtFlavor
+
+object sbtn extends BuiltInTool("sbtn", RequiredVersion.any(sbt)) with SbtFlavor:
   override def installedVersion()(using wd: MaybeGiven[Path]) =
     sbt.installedVersion()
-  override val compilePathName                         = sbt.compilePathName
-  override def canCompile()(using path: Path): Boolean = sbt.canCompile()
-  override def run()(using path: Path): Unit =
-    runVerbose("run")
-  override def pack()(using path: Path): Unit =
-    runVerbose("package")
 
   def shutdownServer()(using path: Path): Unit =
     runVerbose("shutdown")
