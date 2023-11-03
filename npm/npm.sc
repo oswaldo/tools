@@ -1,7 +1,7 @@
 // Wrapper script for npm
 
 //> using toolkit latest
-//> using file "../../core.sc"
+//> using file "../common/core.sc"
 
 import os.*
 import core.*
@@ -10,7 +10,22 @@ import util.*
 import util.chaining.scalaUtilChainingOps
 import scala.annotation.tailrec
 
-object npm extends Tool("npm"):
+object npm extends Tool("npm") with CanBuild:
+  override val compilePathName = "node_modules"
+  override def canCompile()(using path: Path): Boolean =
+    os.exists(path / "package.json")
+  // TODO think about the need of a CanLogin trait for tools that need to login to a service before being able to download dependencies for instance
+  override def checkDependencies()(using path: Path): Unit =
+    runVerbose("i")
+  def npmRun(args: String*)(using path: Path): Unit =
+    runVerbose("run" :: args.toList)
+  override def compile()(using path: Path): Unit =
+    checkDependencies()
+    npmRun("build")
+  override def run()(using path: Path): Unit =
+    runVerbose("start")
+  override def pack()(using path: Path): Unit =
+    runVerbose("pack")
   def installPackage(packageName: String)(using wd: MaybeGiven[Path]): Unit =
     run("install", packageName)
     if (git.isRepo())

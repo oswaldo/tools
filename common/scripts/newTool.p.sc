@@ -57,6 +57,7 @@ val toolFileContents = doReplacements(
   os.read(templateFile),
   replaceNewToolTemplateComment,
   removeNoEditsComment,
+  replaceCoreScCommonPath(toolFolder),
   replaceToolName,
 )
 
