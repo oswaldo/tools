@@ -34,7 +34,7 @@ object npm extends Tool("npm") with CanBuild:
       git.ignore(RelPath(compilePathName))
   def installGlobalPackage(packageName: String): Unit =
     println("Installing global package (needs sudo for the command links) " + packageName + "...")
-    List("sudo", "npm", "install", "-g", packageName).callUnit()
+    List("sudo", "npm", "install", "-g", packageName).callResult()
   def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =
     Try {
       val output = runText("list", packageName, "--depth", "0", "--json")
