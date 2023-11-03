@@ -92,13 +92,13 @@ extension [T: ClassTag](mg: MaybeGiven[T])
       case _    => null.asInstanceOf[T]
 
 extension (p: proc)
-  def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
-    p.call(cwd = wd.orNull, env = env.orNull).out.lines().toList
-  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+  def callResult()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     p.call(cwd = wd.orNull, env = env.orNull)
+  def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    callResult().out.lines().toList
   def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
-    p.call(cwd = wd.orNull, env = env.orNull).out.text().trim()
-  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+    callResult().out.text().trim()
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     p.call(
       stdout = os.Inherit,
       stderr = os.Inherit,
@@ -106,26 +106,23 @@ extension (p: proc)
       env = env.orNull,
     )
   def callVerboseText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
-    p.call(
-      stdout = os.Inherit,
-      stderr = os.Inherit,
-      cwd = wd.orNull,
-      env = env.orNull,
-    ).out
-      .text()
-      .trim()
+    callVerbose().out.text().trim()
+  def callVerboseLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    callVerbose().out.lines().toList
 
 extension (commandWithArguments: List[String])
   def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments).callLines()
-  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
-    os.proc(commandWithArguments).callUnit()
+  def callResult()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
+    os.proc(commandWithArguments).callResult()
   def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments).callText()
-  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     os.proc(commandWithArguments).callVerbose()
   def callVerboseText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments).callVerboseText()
+  def callVerboseLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    os.proc(commandWithArguments).callVerboseLines()
 
 extension (commandWithArguments: String)
   def splitCommandWithArguments(): List[String] =
@@ -133,11 +130,11 @@ extension (commandWithArguments: String)
     commandWithArguments.split(" ").toList
   def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments.splitCommandWithArguments()).callLines()
-  def callUnit()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
-    os.proc(commandWithArguments.splitCommandWithArguments()).callUnit()
+  def callResult()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
+    os.proc(commandWithArguments.splitCommandWithArguments()).callResult()
   def callText()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     os.proc(commandWithArguments.splitCommandWithArguments()).callText()
-  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
+  def callVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     os.proc(commandWithArguments.splitCommandWithArguments()).callVerbose()
 
 def which(name: String): Option[Path] =
@@ -475,8 +472,8 @@ trait Tool(
     s"$name ${args.mkString(" ")}"
   def tryCallLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Try[List[String]] =
     Try((name :: args.toList).callLines())
-  def run(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
-    (name :: args).callUnit()
+  def run(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
+    (name :: args).callResult()
   def run(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     run(args.toList)
   def runText(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
@@ -495,6 +492,11 @@ trait Tool(
   def runVerboseText(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     println(s"running ${callAsString(args*)}")
     (name :: args.toList).callVerboseText()
+  def runVerboseLines(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    println(s"running ${callAsString(args*)}")
+    (name :: args).callVerboseLines()
+  def runVerboseLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+    runVerboseLines(args.toList)
 
 case class ToolExtension(
   val extensionId: String,
@@ -747,7 +749,7 @@ object hdiutil extends BuiltInTool("hdiutil"):
 object installer extends BuiltInTool("installer"):
   def installPkg(pkg: Path): Unit =
     // using a list instead of a string to avoid having to worry about escaping the path for now
-    List("sudo", "installer", "-pkg", pkg.toString, "-target", "/").callUnit()
+    List("sudo", "installer", "-pkg", pkg.toString, "-target", "/").callResult()
   def installDmg(dmgFilePath: Path, pkgFileName: String): Unit =
     Using(DmgFile(dmgFilePath)) { dmg =>
       val volume = dmg.volume

@@ -121,20 +121,81 @@ object git extends Tool("git"):
 
   // TODO think about checking first if it is a repo, making it one if needed, stashing stuff if needed and only failing if it's dirty
   def ignore(paths: RelPath*)(using wd: MaybeGiven[Path]) =
-    val ignorePaths = paths.filterNot(isPathIgnored(_))
-    if ignorePaths.isEmpty then println("Nothing to ignore")
-    else
-      println(s"Adding to .gitignore the following paths:\n${ignorePaths.mkString("\n")}")
-      val rootPath = wd match
-        case path: Path => path
-        case _          => os.pwd
-      val gitIgnorePath = rootPath / ".gitignore"
-      val gitIgnoreLines = Try(os.read.lines(gitIgnorePath)) match
-        case Success(lines) => lines
-        case _              => Nil
-      val newGitIgnoreLines = gitIgnoreLines ++ ignorePaths.map { path =>
-        s"${path.toString}${if os.isDir(rootPath / path) then "/" else ""}"
-      }
-      os.write.over(gitIgnorePath, newGitIgnoreLines.mkString("", "\n", "\n"))
+    paths.filterNot(isPathIgnored(_)) match
+      case Nil => println("Nothing to ignore")
+      case ignorePaths =>
+        println(s"Adding to .gitignore the following paths:\n${ignorePaths.mkString("\n")}")
+        val rootPath = wd match
+          case path: Path => path
+          case _          => os.pwd
+        val gitIgnorePath = rootPath / ".gitignore"
+        val gitIgnoreLines = Try(os.read.lines(gitIgnorePath)) match
+          case Success(lines) => lines
+          case _              => Nil
+        val newGitIgnoreLines = gitIgnoreLines ++ ignorePaths.map { path =>
+          s"${path.toString}${if os.isDir(rootPath / path) then "/" else ""}"
+        }
+        os.write.over(gitIgnorePath, newGitIgnoreLines.mkString("", "\n", "\n"))
+
+  // will add more flags as needed
+  enum FetchFlags(val flag: String):
+    case Prune extends FetchFlags("--prune")
+
+  def fetch(flags: FetchFlags*)(using wd: MaybeGiven[Path]) =
+    runVerbose("fetch" :: flags.map(_.flag).toList)
+
+  def fetchAndPrune()(using wd: MaybeGiven[Path]) =
+    fetch(FetchFlags.Prune)
+
+  enum BranchFlags(val flag: String*):
+    case Verbose extends BranchFlags("-vv")
+    case Delete(force: Boolean = false, branchNames: String*)
+        extends BranchFlags((if force then "-D" else "-d") +: branchNames*)
+
+  def branch(flags: BranchFlags*)(using wd: MaybeGiven[Path]) =
+    runLines("branch" +: flags.flatMap(_.flag)*)
+
+  enum RemoteBranchStatus:
+    case Tracked(branchName: String)
+    case Gone(branchName: String)
+    case Untracked
+
+  case class Branch(
+    current: Boolean,
+    name: String,
+    revision: String,
+    remoteBranchStatus: RemoteBranchStatus,
+    message: String,
+  )
+
+  private val branchListLine = """^(\* )?(.*)\s+([0-9a-f]{7})(?:\s+\[(.*)\])?\s+(.*)$""".r
+  def branchList()(using wd: MaybeGiven[Path]): List[Branch] =
+    branch(BranchFlags.Verbose).map { line =>
+      line match
+        case branchListLine(currentBranchIndicator, branchName, revision, remoteBranchStatus, message) =>
+          val current = currentBranchIndicator == "* "
+          val status = remoteBranchStatus match
+            case null => RemoteBranchStatus.Untracked
+            case s if s.endsWith(": gone") =>
+              RemoteBranchStatus.Gone(s.replaceFirst(": gone$", ""))
+            case s => RemoteBranchStatus.Tracked(s)
+          Branch(current, branchName.trim, revision, status, message)
+        case _ => throw new Exception(s"Failed to parse branch line: $line")
+    }
+
+  def branchDelete(force: Boolean = false, branchNames: String*)(using wd: MaybeGiven[Path]) =
+    branch(BranchFlags.Delete(force, branchNames*))
+
+  def cleanSlateBranches(localRepoFolder: Path)(using wd: MaybeGiven[Path]) =
+    given wd: Path = localRepoFolder
+    fetchAndPrune()
+    branchList()
+      .filterNot(_.current)
+      .filter(_.remoteBranchStatus.isInstanceOf[RemoteBranchStatus.Gone])
+      .map(_.name) match
+      case Nil => println("Nothing to delete")
+      case branchesToDelete =>
+        println(s"Deleting the following branches:\n${branchesToDelete.mkString(" ")}")
+        branchDelete(true, branchesToDelete*)
 
 end git
