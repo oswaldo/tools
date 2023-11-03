@@ -241,7 +241,8 @@ def wrapScripts(scriptsFolder: Path, installFolder: Path) =
         os.write.over(wrapper, specificWrapper)
         os.perms.set(wrapper, "rwxr-xr-x")
       }
-  else println(s"  Skipping wrapping scripts in $scriptsFolder as it doesn't exist")
+  else println(s"  No scripts found in $scriptsFolder")
+end wrapScripts
 
 val InstallFolder = os.home / "oztools"
 
@@ -268,11 +269,11 @@ def addInstallFolderToPath() =
     }
     false
   else
-    println(s"$InstallFolder already in the PATH")
     true
 
-def installWrappers(scriptFolders: Path*) =
+def installWrappers(artifacts: Artifact*): Unit =
   addInstallFolderToPath()
+  val scriptFolders = artifacts.map(_.scriptsFolder).filter(os.exists)
   println(
     s"Adding to folder $InstallFolder wrapper scripts for the ones in the following folders:${scriptFolders
         .mkString("\n  ", "\n  ", "")}",
@@ -281,6 +282,7 @@ def installWrappers(scriptFolders: Path*) =
   scriptFolders.foreach { folder =>
     wrapScripts(folder, InstallFolder)
   }
+  // TODO think about deleting orphan wrappers
 
 trait VersionCompatibilityProperties:
   def installedVersion: InstalledVersion
@@ -407,7 +409,6 @@ trait Artifact:
     install(requiredVersion)
     println(s"Running post install for $name...")
     postInstall(requiredVersion)
-    installWrappers(scriptsFolder)
   def installIfNeeded(requiredVersion: RequiredVersion = RequiredVersion.Latest): Unit =
     installDependencies()
     println(s"checking if $name is installed...")
@@ -440,6 +441,7 @@ trait Artifact:
               s"$name is already installed but the compatibility check failed. will try upgrading so we try getting to the required version (installed: $installed, required: $required)...",
             )
             upgrade(versionCompatibility)
+  end installIfNeeded
 end Artifact
 
 def installIfNeeded(artifacts: Artifact*): Unit =
@@ -448,6 +450,7 @@ def installIfNeeded(artifacts: Artifact*): Unit =
     println("\n")
     d.installIfNeeded()
   }
+  installWrappers(artifacts*)
 
 def installIfNeeded(artifactSet: ArtifactSet): Unit =
   installIfNeeded(artifactSet.artifacts.toList*)
@@ -544,21 +547,28 @@ trait ManagesSource:
   def subpathRecursiveExists(path: Path, subpath: String): Boolean =
     checkRequirements(path)
     os.walk(path).exists(_.last == subpath)
-  def subpathRecursiveFilter(path: Path, subpath: String): List[Path] =
+  def subpathRecursiveFilter(path: Path, subpath: String) =
     checkRequirements(path)
-    os.walk(path).filter(_.last == subpath).toList
+    os.walk.stream(path).filter(_.last == subpath)
 
 trait CompilePath:
   val compilePathName: String
+  //depending on the tool, it can only compile if there is some project descriptor present
+  def canCompile()(using path: Path): Boolean = true
 
 trait CanClean extends ManagesSource with CompilePath:
   this: Tool =>
-  def isDirty(path: Path): Boolean =
-    println(
-      s"Checking if $path is dirty by recursively looking for $compilePathName folders we could potentially remove...",
-    )
-    subpathRecursiveExists(path, compilePathName)
-  def cleanup(path: Path): Unit =
+  def isDirty()(using path: Path): Boolean =
+    if !canCompile() then
+      println(s"  $name doesn't manage $path. Skipping cleanup.")
+      false
+    else
+      println(
+        s"Checking if $path is dirty by recursively looking for $compilePathName folders we could potentially remove...",
+      )
+      subpathRecursiveExists(path, compilePathName)
+
+  def cleanup()(using path: Path): Unit =
     println(s"Cleaning up $path from $name's $compilePathName folders...")
     // TODO confirmation for destructive operations
     subpathRecursiveFilter(path, compilePathName).foreach { buildPath =>
@@ -569,27 +579,32 @@ trait CanClean extends ManagesSource with CompilePath:
 // TODO for this operations that run an external build tool, check if the implicit path is a file or folder, and look for the relevant files if it's a folder
 trait CanCompile extends ManagesSource with CompilePath:
   this: Tool =>
-  def compile(using path: Path): Unit =
+  //some tools might need to check for dependencies before compiling
+  def checkDependencies()(using path: Path): Unit = ()
+  def compile()(using path: Path): Unit =
+    checkDependencies()
     runVerbose("compile")
 
 trait CanTest extends ManagesSource:
   this: Tool =>
-  def test(using path: Path): Unit =
+  def test()(using path: Path): Unit =
     runVerbose("test")
 
 trait CanRun extends ManagesSource:
-  def run(using path: Path): Unit
+  def run()(using path: Path): Unit
 
 trait CanPackage extends ManagesSource:
-  def pack(using path: Path): Unit
+  def pack()(using path: Path): Unit
 
-trait CanBuild extends CanCompile with CanTest with CanRun with CanPackage:
+trait CanBuild extends CanCompile with CanClean with CanTest with CanRun with CanPackage:
   this: Tool =>
-  def build(using path: Path): Unit =
+  def build()(using path: Path): Unit =
     checkRequirements(path)
-    compile
-    test
-    pack
+    if (canCompile()) then
+      compile()
+      // TODO think about adding a flag to skip tests and packing
+      // test()
+      // pack()
 
 case class BuiltInTool(
   override val name: String,
@@ -638,7 +653,8 @@ object ArtifactSet:
 
 //added so tool functions like runText can be used in cases which don't clearly depend on a specific tool and hopefully avoids having to import os in most cases.
 //will also be used to hold higher level abstraction functions that use multiple tools and would only make sense in the context of this project
-object oztools extends BuiltInTool("oztools")
+object oztools extends BuiltInTool("oztools"):
+  override def scriptsFolder: Path = os.pwd / "common" / "scripts"
 
 object bash extends BuiltInTool("bash") with Shell
 

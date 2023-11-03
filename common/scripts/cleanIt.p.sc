@@ -3,15 +3,15 @@
 //> using scala 3.3.1
 //> using file "../core.sc"
 //> using file "../tools.sc"
-//> using file "../cleanup.sc"
+//> using file "../knownSourceManagers.sc"
 //> using file "../../sbt/sbt.sc"
+//> using file "../../npm/npm.sc"
 
-import cleanup.*
+import knownSourceManagers.*
 import core.*
 import core.given
 import os.*
 
 given Array[String] = args
-val folder: Path    = argCallerOrCurrentFolder(0)
-val callerFolder =
-  cleanup(folder)
+given folder: Path  = argCallerOrCurrentFolder(0)
+cleanup()
