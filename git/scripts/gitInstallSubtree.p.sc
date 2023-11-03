@@ -1,11 +1,13 @@
 #!/usr/bin/env -S scala-cli shebang -S 3
 
 //> using scala 3.3.1
-//> using file "../core.sc"
-//> using file "../tools.sc"
+//> using file "../../common/core.sc"
+//> using file "../../common/tools.sc"
+//> using file "../../git/git.sc"
 
 import core.*
 import core.given
+import git.*
 import os.*
 import util.*
 

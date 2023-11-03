@@ -2,10 +2,12 @@
 
 //> using toolkit latest
 //> using file "../common/core.sc"
+//> using file "../git/git.sc"
 
 import os.*
 import core.*
 import core.given
+import git.*
 import util.*
 import util.chaining.scalaUtilChainingOps
 import scala.annotation.tailrec
@@ -29,7 +31,7 @@ object npm extends Tool("npm") with CanBuild:
   def installPackage(packageName: String)(using wd: MaybeGiven[Path]): Unit =
     run("install", packageName)
     if (git.isRepo())
-      git.ignore(RelPath("node_modules"))
+      git.ignore(RelPath(compilePathName))
   def installGlobalPackage(packageName: String): Unit =
     println("Installing global package (needs sudo for the command links) " + packageName + "...")
     List("sudo", "npm", "install", "-g", packageName).callUnit()

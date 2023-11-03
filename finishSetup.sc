@@ -4,6 +4,7 @@
 //> using file "common/core.sc"
 //> using file "common/tools.sc"
 //> using file "aws/aws.sc"
+//> using file "git/git.sc"
 //> using file "npm/npm.sc"
 //> using file "osboxes/osboxes.sc"
 //> using file "podman/podman.sc"
@@ -16,6 +17,7 @@ import tools.*
 import util.*
 
 import aws.*
+import git.*
 import npm.*
 import osboxes.*
 import podman.*

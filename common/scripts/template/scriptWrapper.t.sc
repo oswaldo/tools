@@ -15,5 +15,5 @@ given env: Map[String, String] = Map {
   EnvCallerFolder -> os.pwd.toString
 }
 val argList = Try(args.toList).getOrElse(Nil)
-println(s"Spawning script with args: ${argList.mkString(" ")}")
+println(s"Spawning echo ${argList.mkString(" ")}")
 ("echo" :: argList).callVerbose()
