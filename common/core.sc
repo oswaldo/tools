@@ -9,16 +9,20 @@ import pprint.*
 import util.chaining.scalaUtilChainingOps
 import scala.reflect.ClassTag
 
-def arg[T: ClassTag](i: Int, default: => (T | String))(using args: Array[String], parser: (String) => Option[T]): T =
+def argOption[T: ClassTag](i: Int)(using args: Array[String], parser: (String) => Option[T]): Option[T] =
   Try {
     if args.length <= i then None
     else parser(args(i))
   } match
-    case Success(Some(value)) =>
+    case Success(value) =>
       value
     case Failure(e) =>
       throw e
-    case Success(None) =>
+
+def arg[T: ClassTag](i: Int, default: => (T | String))(using args: Array[String], parser: (String) => Option[T]): T =
+  argOption(i) match
+    case Some(value) => value
+    case None =>
       default match
         case s: String =>
           parser(s).getOrElse(throw new Exception(s"Arg $i: Parsing the default value $s resulted in None"))
@@ -42,17 +46,31 @@ given optionParser[T: ClassTag](using parser: (String => T)): (String => Option[
       case Failure(e) =>
         throw new Exception(s"Failed to parse $s as ${implicitly[ClassTag[T]].runtimeClass.getSimpleName}", e)
 
-def argOrEnv[T: ClassTag](i: Int, envKey: String, default: => (T | String))(using args: Array[String], parser: (String) => Option[T]): T =
-  arg(i,Option(System.getenv(envKey))
-    .flatMap(parser(_))
-    .getOrElse(default)
-  )
+def argOrEnvOption[T: ClassTag](i: Int, envKey: String)(using args: Array[String], parser: (String) => Option[T]): Option[T] =
+  argOption(i).orElse(Option(System.getenv(envKey)).flatMap(parser(_)))
+
+def argOrEnv[T: ClassTag](i: Int, envKey: String, default: => T)(using args: Array[String], parser: (String) => Option[T]): T =
+  argOrEnvOption(i, envKey).getOrElse(default)
 
 def argOrEnvRequired[T: ClassTag](i: Int, envKey: String, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
   argOrEnv(i, envKey, throw new Exception(s"Arg $i | Env $envKey: $missingMessage"))
 
-def argCallerOrCurrentFolder(i: Int)(using args: Array[String], parser: (String) => Path): Path =
-  argOrEnv(i, EnvCallerFolder, os.pwd)
+def argOrCallerFolderOption(i: Int)(using args: Array[String]): Option[Path] =
+  (Option(System.getenv(EnvCallerFolder)), argOption[String](i)) match
+    case (Some(callerFolder), None)                 => Some(Path(callerFolder))
+    case (caller, Some(argumentFolder))                  => 
+      if (argumentFolder.startsWith("/")) then Some(Path(argumentFolder))
+      else caller.map(Path(_) / RelPath(argumentFolder))
+    case (Some(callerFolder), Some(argumentFolder)) => Some(os.root / callerFolder / argumentFolder)
+    case (None, None)                               => None
+  
+def argOrCallerFolderRequired(i: Int, missingMessage: => String)(using args: Array[String]): Path =
+  argOrCallerFolderOption(i) match
+    case Some(path) => path
+    case None       => throw new Exception(s"Arg $i | Env $EnvCallerFolder: $missingMessage")
+  
+def argCallerOrCurrentFolder(i: Int)(using args: Array[String]): Path =
+  argOrCallerFolderOption(i).getOrElse(os.pwd)
 
 //it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
 def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
@@ -195,11 +213,18 @@ val replaceCoreScAbsolutePath = StringReplacement(
   replacement = (os.pwd / "common" / "core.sc").toString,
 )
 
+def pathInTools(path: Path) = path.toString.startsWith(os.pwd.toString)
+
 def replaceCoreScCommonPath(path: Path) = StringReplacement(
   originalFragment = "../../core.sc",
   replacement = {
-    //we need to check the depth of the path relative to the common folder, and then generate the relative path to the common folder. for instance, if the new script being generated will live in xzy/scripts, the relative path to the common folder will be ../../common/core.sc
-    "../" * path.relativeTo(os.pwd / "common").segments.size + "common/core.sc"
+    //first we check if path is a subfolder of os.pwd
+    val result = if pathInTools(path) then
+      //we need to check the depth of the path relative to the common folder, and then generate the relative path to the common folder. for instance, if the new script being generated will live in xzy/scripts, the relative path to the common folder will be ../../common/core.sc
+      "../" * path.relativeTo(os.pwd / "common").segments.size + "common/core.sc"
+    else
+      os.pwd / "common" / "core.sc"
+    result.toString
   },
 )
 

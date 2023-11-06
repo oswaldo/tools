@@ -15,4 +15,5 @@ import os.*
 
 given Array[String] = args
 given folder: Path  = argCallerOrCurrentFolder(0)
-cleanup()
+//TODO hide the notion of InstallFolder from here
+wrapScripts(folder, InstallFolder)
