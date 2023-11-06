@@ -166,3 +166,18 @@ object podman extends Tool("podman", versionLinePrefix = "podman version "):
       list().foreach { machine =>
         if machine.status != MachineStatus.Running then forceRm(machine)
       }
+    def forceReconstruct(machineName: Option[String]): Unit =
+      val machine = apply(machineName)
+      machine.status match
+        case MachineStatus.Running | MachineStatus.Unknown =>
+          forceStop(machine)
+          forceRm(machine)
+          init(machine)
+          forceStart(machine)
+        case MachineStatus.Stopped =>
+          forceRm(machine)
+          init(machine)
+          forceStart(machine)
+        case MachineStatus.NotCreated =>
+          init(machine)
+          forceStart(machine)

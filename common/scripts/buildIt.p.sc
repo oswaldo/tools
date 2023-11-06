@@ -7,8 +7,9 @@
 //> using file "../knownSourceManagers.sc"
 //> using file "../core.sc"
 //> using file "../tools.sc"
-//> using file "../../sbt/sbt.sc"
+//> using file "../../git/git.sc"
 //> using file "../../npm/npm.sc"
+//> using file "../../sbt/sbt.sc"
 
 import core.*
 import core.given
