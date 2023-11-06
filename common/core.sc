@@ -61,7 +61,6 @@ def argOrCallerFolderOption(i: Int)(using args: Array[String]): Option[Path] =
     case (caller, Some(argumentFolder))                  => 
       if (argumentFolder.startsWith("/")) then Some(Path(argumentFolder))
       else caller.map(Path(_) / RelPath(argumentFolder))
-    case (Some(callerFolder), Some(argumentFolder)) => Some(os.root / callerFolder / argumentFolder)
     case (None, None)                               => None
   
 def argOrCallerFolderRequired(i: Int, missingMessage: => String)(using args: Array[String]): Path =
@@ -571,15 +570,16 @@ trait ManagesSource:
       path.relativeTo(os.home).segments.size >= 1,
       s"Path $path is not below the home folder",
     )
-  def subpathRecursiveExists(path: Path, subpath: String): Boolean =
+  def subpathRecursiveExists(path: Path, subpaths: String*): Boolean =
     checkRequirements(path)
-    os.walk(path).exists(_.last == subpath)
-  def subpathRecursiveFilter(path: Path, subpath: String) =
+    os.walk(path, followLinks = false).exists(p => subpaths.contains(p.last))
+
+  def subpathRecursiveFilter(path: Path, subpaths: String*) =
     checkRequirements(path)
-    os.walk.stream(path).filter(_.last == subpath)
+    os.walk.stream(path, followLinks = false).filter(p => subpaths.contains(p.last))
 
 trait CompilePath:
-  val compilePathName: String
+  val compilePathNames: List[String]
   //depending on the tool, it can only compile if there is some project descriptor present
   def canCompile()(using path: Path): Boolean = true
 
@@ -591,16 +591,18 @@ trait CanClean extends ManagesSource with CompilePath:
       false
     else
       println(
-        s"Checking if $path is dirty by recursively looking for $compilePathName folders we could potentially remove...",
+        s"Checking if $path is dirty by recursively looking for compile paths (${compilePathNames.mkString(", ")}) we could potentially remove...",
       )
-      subpathRecursiveExists(path, compilePathName)
+      subpathRecursiveExists(path, compilePathNames*)
 
   def cleanup()(using path: Path): Unit =
-    println(s"Cleaning up $path from $name's $compilePathName folders...")
+    println(s"Cleaning up $path from $name's compile paths (${compilePathNames.mkString(", ")})...")
     // TODO confirmation for destructive operations
-    subpathRecursiveFilter(path, compilePathName).foreach { buildPath =>
-      println(s"  Removing $buildPath")
-      os.remove.all(buildPath)
+    compilePathNames.foreach { compilePathName =>
+      subpathRecursiveFilter(path, compilePathName).foreach { buildPath =>
+        println(s"  Removing $buildPath")
+        os.remove.all(buildPath)
+      }
     }
 
 // TODO for this operations that run an external build tool, check if the implicit path is a file or folder, and look for the relevant files if it's a folder
@@ -830,7 +832,7 @@ object scalaCli
   ) =
     runVerboseText((script.toString +: args)*)
 
-  override val compilePathName = ".scala-build"
+  override val compilePathNames = List(".scala-build")
 
 object python extends Tool("python") with Shell:
   def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =

@@ -13,7 +13,7 @@ import util.chaining.scalaUtilChainingOps
 import scala.annotation.tailrec
 
 object npm extends Tool("npm") with CanBuild:
-  override val compilePathName = "node_modules"
+  override val compilePathNames = List("node_modules", "dist", ".tsbuildinfo")
   override def canCompile()(using path: Path): Boolean =
     os.exists(path / "package.json")
   // TODO think about the need of a CanLogin trait for tools that need to login to a service before being able to download dependencies for instance
@@ -30,8 +30,7 @@ object npm extends Tool("npm") with CanBuild:
     runVerbose("pack")
   def installPackage(packageName: String)(using wd: MaybeGiven[Path]): Unit =
     run("install", packageName)
-    if (git.isRepo())
-      git.ignore(RelPath(compilePathName))
+    if git.isRepo() then compilePathNames.foreach(compilePathName => git.ignore(RelPath(compilePathName)))
   def installGlobalPackage(packageName: String): Unit =
     println("Installing global package (needs sudo for the command links) " + packageName + "...")
     List("sudo", "npm", "install", "-g", packageName).callResult()
