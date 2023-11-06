@@ -10,7 +10,7 @@ import scala.annotation.tailrec
 
 trait SbtFlavor extends CanBuild:
   this: Tool =>
-  override val compilePathName = "target"
+  override val compilePathNames = List("target")
   override def canCompile()(using path: Path): Boolean =
     os.exists(path / "build.sbt")
   override def run()(using path: Path): Unit =
