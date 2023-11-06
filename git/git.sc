@@ -1,8 +1,9 @@
 //> using toolkit latest
 //> using dep "io.kevinlee::just-semver-core::0.13.0"
 //> using dep "com.lihaoyi::pprint::0.8.1"
+//> using file "../common/core.sc"
 
-import core.* //> using file "../common/core.sc"
+import core.*
 import os.*
 import java.nio.file.attribute.PosixFilePermission
 import util.*
@@ -197,5 +198,40 @@ object git extends Tool("git"):
       case branchesToDelete =>
         println(s"Deleting the following branches:\n${branchesToDelete.mkString(" ")}")
         branchDelete(true, branchesToDelete*)
+
+  def checkout(branchName: String)(using wd: MaybeGiven[Path]) =
+    runVerbose("checkout", branchName)
+
+  object config:
+    // TODO think about using parser logic here if some case would benefit from it
+    def apply(key: String)(using wd: MaybeGiven[Path]): Option[String] =
+      Try(runText("config", "--get", key)) match
+        case Success(value) if value.nonEmpty => Some(value)
+        case _                                => None
+    def originUrl()(using wd: MaybeGiven[Path]) = apply("remote.origin.url")
+
+  // sometimes you can get a local repo corrupted, by the IDE or other tools, or you just want a fresh clone to try something. This gitReclone function will backup the repo in the wd by moving it to a folder with the same name added with _bak-yyyy-MM-dd-HH-mm-ss and then clone it again to the original folder and try to switch to the same branch you were before
+  def reclone(localRepoFolder: Path) =
+    given wd: Path = localRepoFolder
+    val repoRoot   = repoRootPath().getOrElse(throw new Exception("Not a git repo"))
+    val repoName   = repoRoot.last
+    val originUrl  = config.originUrl().getOrElse(throw new Exception("Failed to get origin url"))
+    // TODO think about making this file name for backups a standard throughout the toolkit
+    val timestampSuffix =
+      import java.time.LocalDateTime
+      import java.time.format.DateTimeFormatter
+      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
+      LocalDateTime.now.format(formatter)
+    val backupFolder  = repoRoot / RelPath(s"../${repoName}_bak-$timestampSuffix")
+    val currentBranch = branchList().find(_.current).getOrElse(throw new Exception("Failed to get current branch"))
+    println(s"Backing up $repoRoot to $backupFolder")
+    os.copy(repoRoot, backupFolder)
+    os.remove.all(repoRoot)
+    clone(originUrl)(repoRoot)
+    checkout(currentBranch.name)
+    println(s"Recloned $repoRoot to $backupFolder")
+    println(
+      s"You might need to cd into $repoRoot again as the OS might get a bit confused with the folder being deleted and recreated",
+    )
 
 end git
