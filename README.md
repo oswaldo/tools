@@ -10,17 +10,15 @@ When bash scripts go a bit beyond the trivial, they usually become a maintenance
 
 The idea of "the documentation is the code" is hard to achieve if the script code looks like someone died on the keyboard.
 
-Wouldn't it be nice if, instead of `curl -fsSL "http://example.com"` you could write `curl get "http://example.com"`?
+Wouldn't it be nice:
 
-Wouldn't it be nice if instead of going through endless investigations and documentations to setup all different requirements for the different tools you need, you could accumulate all that knowledge in a single place and just reuse it with a simple `./setup.sh`?
+- if instead of `curl -fsSL "http://example.com"` you could write `curl get "http://example.com"`?
+- if instead of going through endless investigations and documentations to setup all different requirements for the different tools you need, you could accumulate all that knowledge in a single place and just reuse it with a simple `./setup.sh`?
+- if instead of waiting for the nice devs in mount olympus to add support for your favorite tool, you could just add it yourself, possibly with a single line of code?
+- to have scripts that simply run with no relevant overhead, take care of all dependencies (even for dependencies that have no package management system in place)?
+- to have scripts that are easy to read and maintain, with great IDE support and immediate, access to the accumulated knowledge and technologies from different communities?
 
-Wouldn't it be nice if instead of waiting for the nice devs in mount olympus to add support for your favorite tool, you could just add it yourself, possibly with a single line of code?
-
-Wouldn't it be nice to have scripts that simply run with no relevant overhead, take care of all dependencies (even for dependencies that have no package management system in place)?
-
-Wouldn't it be nice to have scripts that are easy to read and maintain, with great IDE support and immediate, access to the accumulated knowledge and technologies from different communities?
-
-This is what this project is about.
+This is what this project is about, to make the life of the developer easier by covering some cases that get ignored or reimplemented over and over again through the developer years.
 
 ## Getting started (for the impatient)
 
@@ -49,7 +47,7 @@ Suppose we want to add support to git so we can conveniently use it in your scri
 
 1. **Adding support**
 
-   1.1. As it is a very common and widely used tool, most probably we want to add it to the `core` module, so we can use it in all our scripts. So we add to the bottom of the `common/core.sc` file the following line:
+   1.1. Although it is a very common and widely used tool, we don't want to add it to the `core` module, so it doesn't become an ever growing mess. So we add a new dedicated folder `git`, initially containing only a `git.sc` file the following line:
 
    ```scala
    object git extends Tool("git")
@@ -81,6 +79,29 @@ Suppose we want to add support to git so we can conveniently use it in your scri
    ```scala
    git.hubClone("oswaldo/tools")(os.home / "example" / "build")
    ```
+
+**Wrapper Scripts**
+
+To make it easier to run scripts from the command line, you can create wrapper scripts that will be installed in your path whenever setup.sh is called.
+
+Those scripts follow the conventions:
+
+- They are placed in the `scripts` folder of the module they belong to
+- They have the `.p.sc` extension (the `p` stands for "program")
+- They are executable
+- They have a shebang line pointing to the `scala-cli` executable
+- They import the module they belong to
+- They call the main function of the module they belong to
+
+As one of the goals of this project is to to be easily extended and lower the developer's cognitive load, there is a tool to create new programs. Try this for instance:
+
+```bash
+newProgram exampleProgram example/scripts
+```
+
+You will end up with a new program called `exampleProgram.p.sc` in the `example/scripts` folder, with the content adapted from `common/scripts/template/newProgram.t.sc` (`.t.sc` is a convention for scripts representing templates in this project).
+
+> All script files are expected to be valid Scala-CLI Scala 3 scripts, so you should always be able to run them with `scala-cli <script file>`, even template scripts.
 
 ## Contributing
 
@@ -125,6 +146,12 @@ For instance, considering a project called `my-project` with a git repository in
 ### `git`
 
 ### `virtualbox`
+
+### LLMs
+
+On the bleeding edge of this project, there is a prototypical integration of LLMs using python's transformers package and alternatively the `llm` command line tool.
+
+Thinking about "bleeding edge" and the current discussion around LLMs, the implementation here gives an starting point for your explorations but won't go much further at the moment. One should be careful when playing with LLMs as then can potentially create real life consequences and even damages. So if you cannot understand what I mean or cannot understand the code, just move on and enjoy the rest of the project or maybe get in touch so we can have a chat about it 😉
 
 ## Future work
 
