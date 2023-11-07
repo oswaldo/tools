@@ -5,6 +5,7 @@
 //> using file "common/tools.sc"
 //> using file "aws/aws.sc"
 //> using file "git/git.sc"
+//> using file "gnupg/gnupg.sc"
 //> using file "npm/npm.sc"
 //> using file "osboxes/osboxes.sc"
 //> using file "podman/podman.sc"
@@ -18,6 +19,7 @@ import util.*
 
 import aws.*
 import git.*
+import gnupg.*
 import npm.*
 import osboxes.*
 import podman.*
@@ -42,6 +44,7 @@ lazy val devSetup = minimalSetup ++ ArtifactSet(
   awsSso,
   fig,
   git,
+  gpg,
 
   // totally recommended for a better terminal experience
   iterm2,

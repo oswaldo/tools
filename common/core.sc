@@ -46,28 +46,37 @@ given optionParser[T: ClassTag](using parser: (String => T)): (String => Option[
       case Failure(e) =>
         throw new Exception(s"Failed to parse $s as ${implicitly[ClassTag[T]].runtimeClass.getSimpleName}", e)
 
-def argOrEnvOption[T: ClassTag](i: Int, envKey: String)(using args: Array[String], parser: (String) => Option[T]): Option[T] =
+def argOrEnvOption[T: ClassTag](i: Int, envKey: String)(using
+  args: Array[String],
+  parser: (String) => Option[T],
+): Option[T] =
   argOption(i).orElse(Option(System.getenv(envKey)).flatMap(parser(_)))
 
-def argOrEnv[T: ClassTag](i: Int, envKey: String, default: => T)(using args: Array[String], parser: (String) => Option[T]): T =
+def argOrEnv[T: ClassTag](i: Int, envKey: String, default: => T)(using
+  args: Array[String],
+  parser: (String) => Option[T],
+): T =
   argOrEnvOption(i, envKey).getOrElse(default)
 
-def argOrEnvRequired[T: ClassTag](i: Int, envKey: String, missingMessage: => String)(using args: Array[String], parser: (String) => T): T =
+def argOrEnvRequired[T: ClassTag](i: Int, envKey: String, missingMessage: => String)(using
+  args: Array[String],
+  parser: (String) => T,
+): T =
   argOrEnv(i, envKey, throw new Exception(s"Arg $i | Env $envKey: $missingMessage"))
 
 def argOrCallerFolderOption(i: Int)(using args: Array[String]): Option[Path] =
   (Option(System.getenv(EnvCallerFolder)), argOption[String](i)) match
-    case (Some(callerFolder), None)                 => Some(Path(callerFolder))
-    case (caller, Some(argumentFolder))                  => 
-      if (argumentFolder.startsWith("/")) then Some(Path(argumentFolder))
+    case (Some(callerFolder), None) => Some(Path(callerFolder))
+    case (caller, Some(argumentFolder)) =>
+      if argumentFolder.startsWith("/") then Some(Path(argumentFolder))
       else caller.map(Path(_) / RelPath(argumentFolder))
-    case (None, None)                               => None
-  
+    case (None, None) => None
+
 def argOrCallerFolderRequired(i: Int, missingMessage: => String)(using args: Array[String]): Path =
   argOrCallerFolderOption(i) match
     case Some(path) => path
     case None       => throw new Exception(s"Arg $i | Env $EnvCallerFolder: $missingMessage")
-  
+
 def argCallerOrCurrentFolder(i: Int)(using args: Array[String]): Path =
   argOrCallerFolderOption(i).getOrElse(os.pwd)
 
@@ -77,7 +86,7 @@ def parseVersionFromLines(lines: List[String], versionLinePrefix: String): Insta
   def semverSafe(parts: Seq[String]) =
     parts
       .filter(_.count(_ == '.') > 0)
-      .map{p =>
+      .map { p =>
         val dots = p.count(_ == '.')
         if dots == 1 then p + ".0"
         else if dots > 2 then p.split("\\.").take(3).mkString(".")
@@ -90,7 +99,7 @@ def parseVersionFromLines(lines: List[String], versionLinePrefix: String): Insta
       Some(v)
         .filter(_.nonEmpty)
         // it is also common to have one or more space followed by some suffix, which we want to drop
-        .map{s => 
+        .map { s =>
           val parts = semverSafe(s.split("\\s+"))
           if versionLinePrefix.isEmpty then
             parts
@@ -216,15 +225,14 @@ def pathInTools(path: Path) = path.toString.startsWith(os.pwd.toString)
 
 def replaceCoreScCommonPath(path: Path) = StringReplacement(
   originalFragment = "../../core.sc",
-  replacement = {
-    //first we check if path is a subfolder of os.pwd
-    val result = if pathInTools(path) then
-      //we need to check the depth of the path relative to the common folder, and then generate the relative path to the common folder. for instance, if the new script being generated will live in xzy/scripts, the relative path to the common folder will be ../../common/core.sc
-      "../" * path.relativeTo(os.pwd / "common").segments.size + "common/core.sc"
-    else
-      os.pwd / "common" / "core.sc"
-    result.toString
-  },
+  replacement =
+    // first we check if path is a subfolder of os.pwd
+    val result =
+      if pathInTools(path) then
+        // we need to check the depth of the path relative to the common folder, and then generate the relative path to the common folder. for instance, if the new script being generated will live in xzy/scripts, the relative path to the common folder will be ../../common/core.sc
+        "../" * path.relativeTo(os.pwd / "common").segments.size + "common/core.sc"
+      else os.pwd / "common" / "core.sc"
+    result.toString,
 )
 
 val replaceOsPwdToolsAbsoluteScript = StringReplacement(
@@ -239,7 +247,7 @@ val scriptWrapperTemplatePath = os.pwd / "common" / "scripts" / "template" / "sc
 val EnvCallerFolder = "OZTOOLS_CALLER_FOLDER"
 
 def wrapScripts(scriptsFolder: Path, installFolder: Path) =
-  if (os.exists(scriptsFolder)) then
+  if os.exists(scriptsFolder) then
     val scriptWrapper =
       doReplacements(
         os.read(scriptWrapperTemplatePath),
@@ -289,8 +297,7 @@ def addInstallFolderToPath() =
         println(s"  !!! If you are in a shell affected by this change, start a new shell or run `source $profileFile`")
     }
     false
-  else
-    true
+  else true
 
 def installWrappers(artifacts: Artifact*): Unit =
   addInstallFolderToPath()
@@ -373,11 +380,12 @@ enum InstalledVersion:
     case Version(v) => v
     case Absent     => "Absent"
     case NA         => "NA"
-  //for Version, require the version to be semver compatible
+  // for Version, require the version to be semver compatible
   require(
     this match
       case Version(v) => just.semver.SemVer.parse(v).isRight
-      case _          => true,
+      case _          => true
+    ,
     s"InstalledVersion $this is not semver compatible",
   )
 
@@ -402,11 +410,11 @@ case class Dependency(artifact: Artifact, version: RequiredVersion):
 
 trait Artifact:
   val name: String
-  val dependencies: List[Dependency]       = List.empty
-  def scriptsFolder: Path = os.pwd / name / "scripts"
+  val dependencies: List[Dependency]                                   = List.empty
+  def scriptsFolder: Path                                              = os.pwd / name / "scripts"
   def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion = InstalledVersion.NA
-  def isInstalled(): Boolean               = installedVersion() != InstalledVersion.Absent
-  def isAbsent(): Boolean                  = installedVersion() == InstalledVersion.Absent
+  def isInstalled(): Boolean                                           = installedVersion() != InstalledVersion.Absent
+  def isAbsent(): Boolean                                              = installedVersion() == InstalledVersion.Absent
   def installDependencies(): Unit =
     println(s"checking if dependencies of $name are installed...")
     dependencies.foreach { d =>
@@ -516,7 +524,9 @@ trait Tool(
   def runVerboseText(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): String =
     println(s"running ${callAsString(args*)}")
     (name :: args.toList).callVerboseText()
-  def runVerboseLines(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
+  def runVerboseLines(
+    args: List[String],
+  )(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     println(s"running ${callAsString(args*)}")
     (name :: args).callVerboseLines()
   def runVerboseLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
@@ -580,7 +590,7 @@ trait ManagesSource:
 
 trait CompilePath:
   val compilePathNames: List[String]
-  //depending on the tool, it can only compile if there is some project descriptor present
+  // depending on the tool, it can only compile if there is some project descriptor present
   def canCompile()(using path: Path): Boolean = true
 
 trait CanClean extends ManagesSource with CompilePath:
@@ -608,7 +618,7 @@ trait CanClean extends ManagesSource with CompilePath:
 // TODO for this operations that run an external build tool, check if the implicit path is a file or folder, and look for the relevant files if it's a folder
 trait CanCompile extends ManagesSource with CompilePath:
   this: Tool =>
-  //some tools might need to check for dependencies before compiling
+  // some tools might need to check for dependencies before compiling
   def checkDependencies()(using path: Path): Unit = ()
   def compile()(using path: Path): Unit =
     checkDependencies()
@@ -629,7 +639,7 @@ trait CanBuild extends CanCompile with CanClean with CanTest with CanRun with Ca
   this: Tool =>
   def build()(using path: Path): Unit =
     checkRequirements(path)
-    if (canCompile()) then
+    if canCompile() then
       compile()
       // TODO think about adding a flag to skip tests and packing
       // test()
@@ -669,10 +679,10 @@ trait Shell:
 trait Font(
   override val name: String,
   val fontFilePrefix: String,
-  override val dependencies: List[Dependency] = List.empty,
+  override val dependencies: List[Dependency] = RequiredVersion.any(fcList),
 ) extends Artifact:
   override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
-    val fonts = "fc-list".callText()
+    val fonts = fcList.runText()
     if fonts.contains(fontFilePrefix) then InstalledVersion.NA else InstalledVersion.Absent
 
 case class ArtifactSet(val artifacts: Set[Artifact]):
@@ -735,6 +745,14 @@ object xcodeSelect extends Tool("xcode-select"):
     )
     // TODO think about some custom exceptions but preferably refactor so we can return something that represents the fact of a failed upgrade, so maybe other components can react to it and maybe even try an alternative without the verbosity of exception handling
     throw new Exception("Script Aborted: obsolete xcode-select needs to be removed first")
+end xcodeSelect
+
+object fcList extends Tool("fc-list"):
+  override def install(requiredVersion: RequiredVersion): Unit =
+    brew.installFormula("fontconfig")
+  def list(fontPrefix: String = "") = runLines(
+    (if fontPrefix.isBlank() then Nil else List(fontPrefix))*,
+  )
 
 case class DownloadableFile(name: String, url: String, expectedSha256sum: Option[String])
 
@@ -808,7 +826,11 @@ object brew extends Tool("brew", RequiredVersion.any(xcodeSelect, curl)):
   def formulaInfo(formula: String)    = runVerbose("info", formula)
 
 object scalaCli
-    extends Tool("scala-cli", List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0"))), versionLinePrefix = "Scala CLI version: ")
+    extends Tool(
+      "scala-cli",
+      List(Dependency(xcodeSelect, RequiredVersion.AtLeast("14.3.0"))),
+      versionLinePrefix = "Scala CLI version: ",
+    )
     with CanCompile
     with CanClean:
   override def install(requiredVersion: RequiredVersion): Unit =

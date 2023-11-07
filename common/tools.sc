@@ -10,11 +10,6 @@ object llvm extends Tool("llvm-gcc"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installFormula(name)
 
-object fcList extends BuiltInTool("fc-list"):
-  def list(fontPrefix: String = "") = runLines(
-    (if fontPrefix.isBlank() then Nil else List(fontPrefix))*,
-  )
-
 object zsh extends Tool("zsh") with Shell
 
 object hackNerdFont extends Font("font-hack-nerd-font", "HackNerdFont"):
