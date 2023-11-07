@@ -209,6 +209,9 @@ object virtualBox extends Tool("vboxmanage"):
       "none",
     )
 
+  def upgradeGuestAdditions(vm: RegisteredVm) =
+    runVerbose("guestcontrol", vm.name, "run", "--exe", "/media/cdrom/VBoxLinuxAdditions.run")
+
   def deleteVm(vm: RegisteredVm) =
     detachDisk(vm)
     runVerbose("unregistervm", vm.name, "--delete")
