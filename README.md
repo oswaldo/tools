@@ -20,6 +20,18 @@ Wouldn't it be nice:
 
 This is what this project is about, to make the life of the developer easier by covering some cases that get ignored or reimplemented over and over again through the developer years.
 
+It follows a few principles:
+
+- **Effectiveness**: Effective first, then efficient and eventually generic. This guides implementation detail decisions. "Will the approach work adequately for the real use cases? Yes? Continue. No? Stop."
+- **Simplicity**: Get things done. "Does the change takes closer to the intent of the branch? Yes? Continue. No? Stop."
+- **Pragmatism**: This guides the choice of tools and technologies. "Is there any relevant advantage in implementing this instead of wrapping an existing solution? Yes? Continue. No? Stop."
+- **Clarity**: Create solutions that are easy to use / easy to understand. This guides the use and evolution of syntax and documentation. "Someone with automation experience will understand the intent with a single sentence? Yes? Continue. No? Stop."
+- **Convenience**: Create solutions that are easy to run. This guides the setup and (conventions over) configuration. "Will I run this with a single command with sensible default argument values? Yes? Continue. No? Stop."
+- **Proactivity**: This guides decisions about asking for confirmation. "Is the intent clear enough so I can execute something without asking for confirmation? Yes? Continue. No? Stop."
+- **Extensibility**: This guides the architecture. "Does this make it easier and does not make harder to add new tools? Yes? Continue. No? Stop."
+
+As with any group of principles, they are not always compatible and sometimes they even contradict each other. In those cases, the order of the principles above is the order of priority.
+
 ## Getting started (for the impatient)
 
 ### Setup
@@ -45,42 +57,126 @@ cd ~/git/tools
 
 Suppose we want to add support to git so we can conveniently use it in your scripts (supposing it wasn't already there).
 
-1. **Adding support**
+#### Example: Adding git support
 
-   1.1. Although it is a very common and widely used tool, we don't want to add it to the `core` module, so it doesn't become an ever growing mess. So we add a new dedicated folder `git`, initially containing only a `git.sc` file the following line:
+1. Although it is a very common and widely used tool, we don't want to add it to the `core` module, so it doesn't become an ever growing mess.
 
-   ```scala
-   object git extends Tool("git")
-   ```
+To simplify the task of adhering to the current practice in this project, a script was created to add new tools, so we start by calling:
 
-   1.2. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
+```bash
+newTool git
+```
 
-2. **Adding functionality**
+That will add a new dedicated folder `git`, initially containing only a `git.sc` file with some bootstrapping of imports and the following most important line:
 
-   2.1. Let's add a function to clone a repository. We change the `git` object we just added to `common/core.sc` to the following:
+```scala
+object git extends Tool("git")
+```
 
-   ```scala
-   object git extends Tool("git"):
-     def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
-       run("clone", repo, path.toString)
-   ```
+1. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
 
-   2.2. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones github repositories to a specific folder by providing the user and repo name:
+#### Example: Adding a function to clone a repository
 
-   ```scala
-     def hubClone(githubUserAndRepo: String)(
-         path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
-     ) =
-       clone(s"https://github.com/$githubUserAndRepo.git")(path)
-   ```
+1. Let's add a function to clone a repository. We change the `git` object we just added to `common/core.sc` to the following:
 
-   2.3. Great! Now you can write scripts that can clone github repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
+```scala
+object git extends Tool("git"):
+  def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
+    run("clone", repo, path.toString)
+```
 
-   ```scala
-   git.hubClone("oswaldo/tools")(os.home / "example" / "build")
-   ```
+1. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones github repositories to a specific folder by providing the user and repo name:
 
-**Wrapper Scripts**
+```scala
+  def hubClone(githubUserAndRepo: String)(
+      path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
+  ) =
+    clone(s"https://github.com/$githubUserAndRepo.git")(path)
+```
+
+1. Great! Now you can write scripts that can clone github repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
+
+```scala
+git.hubClone("oswaldo/tools")(os.home / "example" / "build")
+```
+
+> - I'm still not impressed. Let's say I want to install one of those fancy new language models, which involve cloning a repo, installing some dependencies, doing some local setup and running some web server. How would you do that?
+>
+> - Good that you ask...
+
+#### Example: Adding a large language model as a tool
+
+There is a whole zoo of LLMs at the moment, with installation instructions that can be as simple as "install it using the XYZ tool" (which has it's own installation instructions) to complex multi page documents with lots of steps and requirements.
+
+> - Does this project helps me integrating things with simple installation steps? Complex ones from source? Something in between?
+>
+> - YES 😎
+
+Let's say you want to be able to chat about some local files using a locally running LLM, so we head to PrivateGPT installation instructions and start translating them to our nice scripts.
+
+1. First we need to add a new tool, so we have a dedicated folder and script file to work at:
+
+```bash
+newTool privategpt
+```
+
+1. Looking at PrivateGPT quick local installation steps, the first step is to clone the repository. As we already have a `git` tool, we can just reuse it, writing a installer function as follows to clone it into a local folder:
+
+```scala
+
+  private val localClonePath = os.home / "git" / name
+
+  override def install(requiredVersion: RequiredVersion) =
+    git.hubClone("imartinez/privateGPT")(localClonePath)
+```
+
+1. The next steps involve pyenv, poetry, pip and make. Thankfully we have those tools already integrated so the final version of install looks like this:
+
+```scala
+  override def install(requiredVersion: RequiredVersion) =
+    git.hubClone("imartinez/privateGPT")(localClonePath)
+    given Path = localClonePath
+    pyenv.localPythonVersion = "3.11"
+    pyenv.activePythonPath().foreach(poetry.env.use)
+    poetry.checkDependencies("ui", "local")
+    poetry.run("run", "python", "scripts/setup")
+    given Map[String, String] = Map("CMAKE_ARGS" -> "-DLLAMA_METAL=on")
+    pip.installPythonPackage("llama-cpp-python")
+```
+
+> We leave the last step mentioned in the quick installation instructions (`PGPT_PROFILES=local make run`) out of the install function as it triggers the actual server and we don't want to block the install process. We will add a function to run the server later.
+
+1. For the dependency mechanism work, we also need to adjust the privategpt tool declaration to:
+
+```scala
+object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
+```
+
+> We don't need to explicitly mention python as it is installed by pyenv, pip as it is bundled with python and make as it is a dependency of poetry.
+
+1. To be able to actually install, we also need to know if it is already. With normal tools, we would be able to detect if it is installed or not by checking for the existence of a command, usually named after the tool, which in most cases is able to answer which is the installed version. As in this case it is a repository and not an actually installable application, we need to get the version from the source code itself. We can do that by reading the `version.txt` file in the repository root:
+
+```scala
+  override def installedVersion()(using wd: MaybeGiven[Path]) =
+    val versionFile = localClonePath / "version.txt"
+    if os.exists(versionFile) then
+      val version = os.read(versionFile).trim
+      InstalledVersion.Version(version)
+    else InstalledVersion.Absent
+```
+
+1. Now we add a function to be able to start the server programmatically when wanted:
+
+```scala
+def start(): Unit =
+  given Path                = localClonePath
+  given Map[String, String] = Map("PGPT_PROFILES" -> "local")
+  make.run()
+```
+
+1. Then we add privategpt to be installed with the other tools in finishSetup.sc
+
+### Wrapper Scripts (aka Programs)
 
 To make it easier to run scripts from the command line, you can create wrapper scripts that will be installed in your path whenever setup.sh is called.
 
@@ -145,6 +241,10 @@ For instance, considering a project called `my-project` with a git repository in
 
 ### `git`
 
+### `podman`
+
+### `sbt`
+
 ### `virtualbox`
 
 ### LLMs
@@ -155,11 +255,7 @@ Thinking about "bleeding edge" and the current discussion around LLMs, the imple
 
 ## Future work
 
-#### Reusable VM Snapshots
-
-### `sbt`
-
-### `podman`
+### VirtualBox Reusable VM Snapshots
 
 ### `jq`
 

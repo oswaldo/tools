@@ -9,6 +9,8 @@
 //> using file "npm/npm.sc"
 //> using file "osboxes/osboxes.sc"
 //> using file "podman/podman.sc"
+//> using file "poetry/poetry.sc"
+//> using file "privategpt/privategpt.sc"
 //> using file "vm/virtualBox.sc"
 //> using toolkit latest
 
@@ -23,19 +25,16 @@ import gnupg.*
 import npm.*
 import osboxes.*
 import podman.*
+import poetry.*
+import privategpt.*
 import virtualBox.*
 
 //TODO think about saving last time the setup was run, and only running if it's been a while
 
 lazy val minimalSetup = ArtifactSet(
-  // currently brew is essential for this project as we focus on mac for now and it's the easiest way to install most of the things we need
-  brew,
-
-  // this tooling is itself listed here to make use of other features like updating script wrappers
-  oztools,
-
-  // scala-cli is the actual platform for our scripts here, and yes, we can use a scala-cli script to install scala-cli 🤯
-  scalaCli,
+  brew,     // currently brew is essential for this project as we focus on mac for now and it's the easiest way to install most of the things we need
+  oztools,  // this tooling is itself listed here to make use of other features like updating script wrappers
+  scalaCli, // scala-cli is the actual platform for our scripts here, and yes, we can use a scala-cli script to install scala-cli 🤯
   xcodeSelect,
 )
 
@@ -45,14 +44,13 @@ lazy val devSetup = minimalSetup ++ ArtifactSet(
   fig,
   git,
   gpg,
-
-  // totally recommended for a better terminal experience
-  iterm2,
+  iterm2, // totally recommended for a better terminal experience
   npm,
+  privategpt,
+  pyenv,
   podman,
-
-  // totally recommended for a better terminal experience
-  spaceshipPrompt,
+  poetry,
+  spaceshipPrompt, // totally recommended for a better terminal experience
   vscode,
   zsh,
 )
@@ -60,8 +58,7 @@ lazy val devSetup = minimalSetup ++ ArtifactSet(
 lazy val fullSetupTools = devSetup ++ ArtifactSet(
   docsify,
   hackNerdFont,
-  // llvm if you want to play with scala native
-  llvm,
+  llvm, // llvm if you want to play with scala native
   osboxes,
   p7zip,
   virtualBox,

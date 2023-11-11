@@ -117,6 +117,8 @@ extension [T: ClassTag](mg: MaybeGiven[T])
       case g: T => g
       case _    => null.asInstanceOf[T]
 
+// TODO as the working directory and the environment are common parameters to many functions, think about creating a CallContext type to simplify the signatures, specially with MaybeGiven
+
 extension (p: proc)
   def callResult()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     p.call(cwd = wd.orNull, env = env.orNull)
@@ -444,7 +446,7 @@ trait Artifact:
     val versionCompatibility = requiredVersion.compatibleWith(installedVersion())
     versionCompatibility match
       case VersionCompatibility.Compatible(_, required) =>
-        println(s"$name is already installed in a compatible version (required: $required)")
+        () // do nothing
       case VersionCompatibility.Incompatible(installed, required) =>
         // TODO think about making options of replacing or downgrading explicit
         println(
@@ -747,6 +749,9 @@ object xcodeSelect extends Tool("xcode-select"):
     throw new Exception("Script Aborted: obsolete xcode-select needs to be removed first")
 end xcodeSelect
 
+object make extends BuiltInTool("make", RequiredVersion.any(xcodeSelect)):
+  def run() = runVerbose("run")
+
 object fcList extends Tool("fc-list"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installFormula("fontconfig")
@@ -856,13 +861,30 @@ object scalaCli
 
   override val compilePathNames = List(".scala-build")
 
-object python extends Tool("python") with Shell:
+object python extends Tool("python", RequiredVersion.any(pyenv)) with Shell:
+  override def install(requiredVersion: RequiredVersion): Unit =
+    requiredVersion match
+      case RequiredVersion.Exact(version) =>
+        pyenv.installPython(version)
+      case _ =>
+        super.install(requiredVersion)
   def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =
     Try(bash.executeText(s"python -c \"import $packageName; print($packageName.__version__)\"")) match
       case Failure(e) =>
         println(s"  package $packageName not installed:\n${e.getMessage()}")
         InstalledVersion.Absent
       case Success(v) => InstalledVersion.Version(v.trim())
+end python
+
+object pip extends BuiltInTool("pip", RequiredVersion.atLeast("3.4", python)):
+  enum PipInstallFlag(val flag: String):
+    case ForceReinstall extends PipInstallFlag("--force-reinstall")
+    case NoCacheDir     extends PipInstallFlag("--no-cache-dir")
+  def installPythonPackage(packageName: String, flags: PipInstallFlag*)(using
+    wd: MaybeGiven[Path],
+    env: MaybeGiven[Map[String, String]],
+  ) =
+    runVerbose("install" :: (flags.map(_.flag).toList :+ packageName)*)
 
 //TODO think if python packages should be treated as we do with extensions or if we need another abstraction instead of Tool
 //TODO think about pro and cons of using one package manager for everything (in this case we are using brew instead of pip for python packages)
@@ -873,3 +895,33 @@ object six extends Tool("six", RequiredVersion.any(python)):
 object yaml extends Tool("yaml", RequiredVersion.any(python)):
   override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     python.installedPackageVersion(name)
+
+object pyenv extends Tool("pyenv", versionLinePrefix = "pyenv "):
+  def installedPythonVersions() =
+    runLines("versions", "--bare")
+  def isPythonInstalled(version: String) =
+    installedPythonVersions().exists(_.startsWith(version))
+  def installPython(version: String) =
+    if isPythonInstalled(version) then println(s"Python $version is already installed")
+    else
+      println(s"Installing Python $version")
+      runVerbose("install", version)
+  def activePythonPath()(using wd: MaybeGiven[Path]): Option[Path] =
+    runText("which", "python").pipe { path =>
+      if path.isBlank() then
+        println("No active python version")
+        None
+      else
+        println(s"Active python version: $path")
+        Some(Path(path))
+    }
+  def globalPythonVersion: String = runText("global")
+  def globalPythonVersion_=(version: String): Unit =
+    installPython(version)
+    runVerbose("global", version)
+  def localPythonVersion(using wd: MaybeGiven[Path]): String = runText("local")
+  def localPythonVersion_=(version: String)(using wd: MaybeGiven[Path]): Unit =
+    installPython(version)
+    runVerbose("local", version)
+  def exec(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    runVerbose("exec" :: args.toList*)
