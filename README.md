@@ -61,17 +61,17 @@ Suppose we want to add support to git so we can conveniently use it in your scri
 
 1. Although it is a very common and widely used tool, we don't want to add it to the `core` module, so it doesn't become an ever-growing mess.
 
-To simplify the task of adhering to the current practice in this project, a script was created to add new tools, so we start by calling:
+   To simplify the task of adhering to the current practice in this project, a script was created to add new tools, so we start by calling:
 
-```bash
-newTool git
-```
+   ```bash
+   newTool git
+   ```
 
-That will add a new dedicated folder `git`, initially containing only a `git.sc` file with some bootstrapping of imports and the following most important line:
+   That will add a new dedicated folder `git`, initially containing only a `git.sc` file with some bootstrapping of imports and the following most important line:
 
-```scala
-object git extends Tool("git")
-```
+   ```scala
+   object git extends Tool("git")
+   ```
 
 1. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
 
@@ -79,22 +79,22 @@ object git extends Tool("git")
 
 1. Let's add a function to clone a repository. We change the `git` object we just added to `common/core.sc` to the following:
 
-```scala
-object git extends Tool("git"):
-  def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
-    run("clone", repo, path.toString)
-```
+   ```scala
+   object git extends Tool("git"):
+     def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
+       run("clone", repo, path.toString)
+   ```
 
 1. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones GitHub repositories to a specific folder by providing the user and repo name:
 
-```scala
-  def hubClone(githubUserAndRepo: String)(
-      path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
-  ) =
-    clone(s"https://github.com/$githubUserAndRepo.git")(path)
-```
+   ```scala
+     def hubClone(githubUserAndRepo: String)(
+         path: Path = os.home / "git" / githubUserAndRepo.split("/").last,
+     ) =
+       clone(s"https://github.com/$githubUserAndRepo.git")(path)
+   ```
 
-1. Great! Now you can write scripts that can clone GitHub repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
+Great! Now you can write scripts that can clone GitHub repositories. Suppose you are running a script that is preparing some podman image and you need a clone of this project inside a folder `~/example/build`, so you would have a line in your script like the following:
 
 ```scala
 git.hubClone("oswaldo/tools")(os.home / "example" / "build")
@@ -116,91 +116,91 @@ Let's say you want to be able to chat about some local files using a locally run
 
 1. First we need to add a new tool, so we have a dedicated folder and script file to work at:
 
-```bash
-newTool privategpt
-```
+   ```bash
+   newTool privategpt
+   ```
 
 1. Looking at PrivateGPT's quick local installation steps, the first step is to clone the repository. As we already have a `git` tool, we can just reuse it, writing an installer function as follows to clone it into a local folder:
 
-```scala
+   ```scala
 
-  private val localClonePath = os.home / "git" / name
+     private val localClonePath = os.home / "git" / name
 
-  override def install(requiredVersion: RequiredVersion) =
-    git.hubClone("imartinez/privateGPT")(localClonePath)
-```
+     override def install(requiredVersion: RequiredVersion) =
+       git.hubClone("imartinez/privateGPT")(localClonePath)
+   ```
 
 1. The next steps involve pyenv, poetry, pip and make. Thankfully we have those tools already integrated so the install function can look like this:
 
-```scala
-  override def install(requiredVersion: RequiredVersion) =
-    git.hubClone("imartinez/privateGPT")(localClonePath)
-    given Path = localClonePath
-    pyenv.localPythonVersion = "3.11"
-    pyenv.activePythonPath().foreach(poetry.env.use)
-    poetry.checkDependencies("ui", "local")
-    poetry.run("run", "python", "scripts/setup")
-    given Map[String, String] = Map("CMAKE_ARGS" -> "-DLLAMA_METAL=on")
-    pip.installPythonPackage("llama-cpp-python")
-```
+   ```scala
+     override def install(requiredVersion: RequiredVersion) =
+       git.hubClone("imartinez/privateGPT")(localClonePath)
+       given Path = localClonePath
+       pyenv.localPythonVersion = "3.11"
+       pyenv.activePythonPath().foreach(poetry.env.use)
+       poetry.checkDependencies("ui", "local")
+       poetry.run("run", "python", "scripts/setup")
+       given Map[String, String] = Map("CMAKE_ARGS" -> "-DLLAMA_METAL=on")
+       pip.installPythonPackage("llama-cpp-python")
+   ```
 
-> We leave the last step mentioned in the quick installation instructions (`PGPT_PROFILES=local make run`) out of the install function as it triggers the actual server and we don't want to block the install process. We will add a function to run the server later.
+   > We leave the last step mentioned in the quick installation instructions (`PGPT_PROFILES=local make run`) out of the install function as it triggers the actual server and we don't want to block the install process. We will add a function to run the server later.
 
 1. For the dependency mechanism work, we also need to adjust the PrivateGPT tool declaration to:
 
-```scala
-object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
-```
+   ```scala
+   object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
+   ```
 
-> We don't need to explicitly mention Python as it is installed by pyenv, pip as it is bundled with Python and make as it is a dependency of poetry.
+   > We don't need to explicitly mention Python as it is installed by pyenv, pip as it is bundled with Python and make as it is a dependency of poetry.
 
 1. To be able to actually install, we also need to know if it is already. With normal tools, we would be able to detect if it is installed or not by checking for the existence of a command, usually named after the tool, which in most cases is able to answer which is the installed version. As in this case it is a repository and not an actually installable application, we need to get the version from the source code itself. We can do that by reading the `version.txt` file in the repository root:
 
-```scala
-  override def installedVersion()(using wd: MaybeGiven[Path]) =
-    val versionFile = localClonePath / "version.txt"
-    if os.exists(versionFile) then
-      val version = os.read(versionFile).trim
-      InstalledVersion.Version(version)
-    else InstalledVersion.Absent
-```
+   ```scala
+     override def installedVersion()(using wd: MaybeGiven[Path]) =
+       val versionFile = localClonePath / "version.txt"
+       if os.exists(versionFile) then
+         val version = os.read(versionFile).trim
+         InstalledVersion.Version(version)
+       else InstalledVersion.Absent
+   ```
 
 1. Now we add a function to be able to start the server programmatically when wanted:
 
-```scala
-def start(): Unit =
-  given Path                = localClonePath
-  given Map[String, String] = Map("PGPT_PROFILES" -> "local")
-  make.run()
-```
+   ```scala
+   def start(): Unit =
+     given Path                = localClonePath
+     given Map[String, String] = Map("PGPT_PROFILES" -> "local")
+     make.run()
+   ```
 
 1. Then we add PrivateGPT to be installed with the other tools in finishSetup.sc
 
-> As the installation process is a bit more complex and can fail or be aborted in the middle, in the real implementation, we wrap the body of the install function in one called checkCompletion, and you can check the full implementation in the [privategpt.sc](./common/tools/privategpt/privategpt.sc) file.
+   > As the installation process is a bit more complex and can fail or be aborted in the middle, in the real implementation, we wrap the body of the install function in one called checkCompletion, and you can check the full implementation in the [privategpt.sc](./common/tools/privategpt/privategpt.sc) file.
 
 #### Example: Exposing the PrivateGPT server as a program
 
 1. Now we want to be able to run the server from the command line, so we create a new program:
 
-```bash
-newProgram startPrivateGPT privategpt/scripts
-```
+   ```bash
+   newProgram startPrivateGPT privategpt/scripts
+   ```
 
 1. The tooling will create a new file `privategpt/scripts/startPrivateGPT.p.sc` with lots of scaffolding and example code. We can remove the example code and replace it with the following:
 
-```scala
-privategpt.start()
-```
+   ```scala
+   privategpt.start()
+   ```
 
-> Currently, the scaffolding created might be missing a couple of references to other needed scripts, so when you try running, you will know which ones to add. This will be fixed in a future version of the tooling.
+   > Currently, the scaffolding created might be missing a couple of references to other needed scripts, so when you try running, you will know which ones to add. This will be fixed in a future version of the tooling.
 
 1. Run `./setup.sh` again to install the new program
 
 1. Now we can run the server with:
 
-```bash
-startPrivateGPT
-```
+   ```bash
+   startPrivateGPT
+   ```
 
 1. Done! 🎉
 
