@@ -176,6 +176,8 @@ def start(): Unit =
 
 1. Then we add privategpt to be installed with the other tools in finishSetup.sc
 
+> As the installation process is a bit more complex and can fail or be aborted in the middle, in the real implementation, we wrap the body of the install function in one called checkCompletion, and you can check the full implementation in the [privategpt.sc](./common/tools/privategpt/privategpt.sc) file.
+
 ### Wrapper Scripts (aka Programs)
 
 To make it easier to run scripts from the command line, you can create wrapper scripts that will be installed in your path whenever setup.sh is called.

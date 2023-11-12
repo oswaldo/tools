@@ -275,14 +275,14 @@ def wrapScripts(scriptsFolder: Path, installFolder: Path) =
   else println(s"  No scripts found in $scriptsFolder")
 end wrapScripts
 
-val InstallFolder = os.home / "oztools"
+val OzToolsFolder = os.home / "oztools"
 
-def addInstallFolderToPath() =
+def addOzToolsFolderToPath() =
   val path = System.getenv("PATH")
-  if !path.contains(InstallFolder.toString) then
-    println(s"Adding $InstallFolder to the PATH")
+  if !path.contains(OzToolsFolder.toString) then
+    println(s"Adding $OzToolsFolder to the PATH")
     val profileFiles = List(".bash_profile", ".profile", ".zprofile").map(os.home / _).filter(os.exists)
-    val line         = s"export PATH=\"$$PATH:$InstallFolder\""
+    val line         = s"export PATH=\"$$PATH:$OzToolsFolder\""
     profileFiles.foreach { profileFile =>
       if os.read.lines(profileFile).contains(line) then println(s"$profileFile already contained the export PATH line")
       else
@@ -302,15 +302,15 @@ def addInstallFolderToPath() =
   else true
 
 def installWrappers(artifacts: Artifact*): Unit =
-  addInstallFolderToPath()
+  addOzToolsFolderToPath()
   val scriptFolders = artifacts.map(_.scriptsFolder).filter(os.exists)
   println(
-    s"Adding to folder $InstallFolder wrapper scripts for the ones in the following folders:${scriptFolders
+    s"Adding to folder $OzToolsFolder wrapper scripts for the ones in the following folders:${scriptFolders
         .mkString("\n  ", "\n  ", "")}",
   )
-  os.makeDir.all(InstallFolder)
+  os.makeDir.all(OzToolsFolder)
   scriptFolders.foreach { folder =>
-    wrapScripts(folder, InstallFolder)
+    wrapScripts(folder, OzToolsFolder)
   }
   // TODO think about deleting orphan wrappers
 
@@ -409,6 +409,22 @@ case class Dependency(artifact: Artifact, version: RequiredVersion):
   def installIfNeeded()     = artifact.installIfNeeded(version)
   def compatibleVersionInstalled() =
     version.compatibleWith(artifact.installedVersion())
+
+//sometimes installation can take a long time or be composed of multiple steps, where failure or user cancellation can happen at any point. For this cases we have the function below which has in the first argument list the path to a file that will be created to indicate the completion of the installation (at first it is just an empty file), and also meaning that the whole installation process can be skipped if the file already exists. The second argument list is the actual installation steps, which will be executed only if the file does not exist.
+//this function is expected to be called mostly around the body of the install method of an Artifact wit a non  trivial installation process.
+//The same file can also be checked in the installedVersion method of an Artifact to check if the installation was successful, creating the chance to return Absent so the install could be attempted again.
+def checkCompletion(completionIndicator: os.Path)(steps: => Unit): Unit =
+  if !os.exists(completionIndicator) then
+    Try(steps) match
+      case Success(_) =>
+        println(s"  installation completed successfully, creating completion indicator $completionIndicator")
+        // write the file, including necessary parent folders
+        (completionIndicator / os.up).pipe(os.makeDir.all)
+        os.write(completionIndicator, "")
+      case Failure(e) =>
+        println(s"  installation failed, completion indicator $completionIndicator will not be created")
+        throw e
+  else println(s"  $completionIndicator already exists, skipping installation")
 
 trait Artifact:
   val name: String

@@ -28,6 +28,8 @@ object git extends Tool("git"):
 
   def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
     runVerbose("clone", repo, path.toString)
+  def pull()(using wd: Path = os.pwd) =
+    runVerbose("pull")
   def remoteList()(using wd: Path = os.pwd) =
     runLines("remote", "-v")
       .filter(_.trim.endsWith("(fetch)"))
