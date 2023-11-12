@@ -178,6 +178,32 @@ def start(): Unit =
 
 > As the installation process is a bit more complex and can fail or be aborted in the middle, in the real implementation, we wrap the body of the install function in one called checkCompletion, and you can check the full implementation in the [privategpt.sc](./common/tools/privategpt/privategpt.sc) file.
 
+#### Example: Exposing the privategpt server as a program
+
+1. Now we want to be able to run the server from the command line, so we create a new program:
+
+```bash
+newProgram startPrivateGPT privategpt/scripts
+```
+
+1. The tooling will create a new file `privategpt/scripts/startPrivateGPT.p.sc` with lots of scafolding and example code. We can remove the example code and replace it with the following:
+
+```scala
+privategpt.start()
+```
+
+> Currently, the scaffolding created might be missing a couple of references to other needed scripts, so when you try running, you will know which ones to add. This will be fixed in a future version of the tooling.
+
+1. Run `./setup.sh` again to install the new program
+
+1. Now we can run the server with:
+
+```bash
+startPrivateGPT
+```
+
+1. Done! 🎉
+
 ### Wrapper Scripts (aka Programs)
 
 To make it easier to run scripts from the command line, you can create wrapper scripts that will be installed in your path whenever setup.sh is called.

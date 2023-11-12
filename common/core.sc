@@ -766,7 +766,7 @@ object xcodeSelect extends Tool("xcode-select"):
 end xcodeSelect
 
 object make extends BuiltInTool("make", RequiredVersion.any(xcodeSelect)):
-  def run() = runVerbose("run")
+  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) = runVerbose("run")
 
 object fcList extends Tool("fc-list"):
   override def install(requiredVersion: RequiredVersion): Unit =
