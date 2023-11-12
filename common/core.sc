@@ -117,6 +117,8 @@ extension [T: ClassTag](mg: MaybeGiven[T])
       case g: T => g
       case _    => null.asInstanceOf[T]
 
+// TODO as the working directory and the environment are common parameters to many functions, think about creating a CallContext type to simplify the signatures, specially with MaybeGiven
+
 extension (p: proc)
   def callResult()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.CommandResult =
     p.call(cwd = wd.orNull, env = env.orNull)
@@ -273,14 +275,14 @@ def wrapScripts(scriptsFolder: Path, installFolder: Path) =
   else println(s"  No scripts found in $scriptsFolder")
 end wrapScripts
 
-val InstallFolder = os.home / "oztools"
+val OzToolsFolder = os.home / "oztools"
 
-def addInstallFolderToPath() =
+def addOzToolsFolderToPath() =
   val path = System.getenv("PATH")
-  if !path.contains(InstallFolder.toString) then
-    println(s"Adding $InstallFolder to the PATH")
+  if !path.contains(OzToolsFolder.toString) then
+    println(s"Adding $OzToolsFolder to the PATH")
     val profileFiles = List(".bash_profile", ".profile", ".zprofile").map(os.home / _).filter(os.exists)
-    val line         = s"export PATH=\"$$PATH:$InstallFolder\""
+    val line         = s"export PATH=\"$$PATH:$OzToolsFolder\""
     profileFiles.foreach { profileFile =>
       if os.read.lines(profileFile).contains(line) then println(s"$profileFile already contained the export PATH line")
       else
@@ -300,15 +302,15 @@ def addInstallFolderToPath() =
   else true
 
 def installWrappers(artifacts: Artifact*): Unit =
-  addInstallFolderToPath()
+  addOzToolsFolderToPath()
   val scriptFolders = artifacts.map(_.scriptsFolder).filter(os.exists)
   println(
-    s"Adding to folder $InstallFolder wrapper scripts for the ones in the following folders:${scriptFolders
+    s"Adding to folder $OzToolsFolder wrapper scripts for the ones in the following folders:${scriptFolders
         .mkString("\n  ", "\n  ", "")}",
   )
-  os.makeDir.all(InstallFolder)
+  os.makeDir.all(OzToolsFolder)
   scriptFolders.foreach { folder =>
-    wrapScripts(folder, InstallFolder)
+    wrapScripts(folder, OzToolsFolder)
   }
   // TODO think about deleting orphan wrappers
 
@@ -408,6 +410,22 @@ case class Dependency(artifact: Artifact, version: RequiredVersion):
   def compatibleVersionInstalled() =
     version.compatibleWith(artifact.installedVersion())
 
+//sometimes installation can take a long time or be composed of multiple steps, where failure or user cancellation can happen at any point. For this cases we have the function below which has in the first argument list the path to a file that will be created to indicate the completion of the installation (at first it is just an empty file), and also meaning that the whole installation process can be skipped if the file already exists. The second argument list is the actual installation steps, which will be executed only if the file does not exist.
+//this function is expected to be called mostly around the body of the install method of an Artifact wit a non  trivial installation process.
+//The same file can also be checked in the installedVersion method of an Artifact to check if the installation was successful, creating the chance to return Absent so the install could be attempted again.
+def checkCompletion(completionIndicator: os.Path)(steps: => Unit): Unit =
+  if !os.exists(completionIndicator) then
+    Try(steps) match
+      case Success(_) =>
+        println(s"  installation completed successfully, creating completion indicator $completionIndicator")
+        // write the file, including necessary parent folders
+        (completionIndicator / os.up).pipe(os.makeDir.all)
+        os.write(completionIndicator, "")
+      case Failure(e) =>
+        println(s"  installation failed, completion indicator $completionIndicator will not be created")
+        throw e
+  else println(s"  $completionIndicator already exists, skipping installation")
+
 trait Artifact:
   val name: String
   val dependencies: List[Dependency]                                   = List.empty
@@ -444,7 +462,7 @@ trait Artifact:
     val versionCompatibility = requiredVersion.compatibleWith(installedVersion())
     versionCompatibility match
       case VersionCompatibility.Compatible(_, required) =>
-        println(s"$name is already installed in a compatible version (required: $required)")
+        () // do nothing
       case VersionCompatibility.Incompatible(installed, required) =>
         // TODO think about making options of replacing or downgrading explicit
         println(
@@ -747,6 +765,9 @@ object xcodeSelect extends Tool("xcode-select"):
     throw new Exception("Script Aborted: obsolete xcode-select needs to be removed first")
 end xcodeSelect
 
+object make extends BuiltInTool("make", RequiredVersion.any(xcodeSelect)):
+  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) = runVerbose("run")
+
 object fcList extends Tool("fc-list"):
   override def install(requiredVersion: RequiredVersion): Unit =
     brew.installFormula("fontconfig")
@@ -856,13 +877,30 @@ object scalaCli
 
   override val compilePathNames = List(".scala-build")
 
-object python extends Tool("python") with Shell:
+object python extends Tool("python", RequiredVersion.any(pyenv)) with Shell:
+  override def install(requiredVersion: RequiredVersion): Unit =
+    requiredVersion match
+      case RequiredVersion.Exact(version) =>
+        pyenv.installPython(version)
+      case _ =>
+        super.install(requiredVersion)
   def installedPackageVersion(packageName: String)(using wd: MaybeGiven[Path]): InstalledVersion =
     Try(bash.executeText(s"python -c \"import $packageName; print($packageName.__version__)\"")) match
       case Failure(e) =>
         println(s"  package $packageName not installed:\n${e.getMessage()}")
         InstalledVersion.Absent
       case Success(v) => InstalledVersion.Version(v.trim())
+end python
+
+object pip extends BuiltInTool("pip", RequiredVersion.atLeast("3.4", python)):
+  enum PipInstallFlag(val flag: String):
+    case ForceReinstall extends PipInstallFlag("--force-reinstall")
+    case NoCacheDir     extends PipInstallFlag("--no-cache-dir")
+  def installPythonPackage(packageName: String, flags: PipInstallFlag*)(using
+    wd: MaybeGiven[Path],
+    env: MaybeGiven[Map[String, String]],
+  ) =
+    runVerbose("install" :: (flags.map(_.flag).toList :+ packageName)*)
 
 //TODO think if python packages should be treated as we do with extensions or if we need another abstraction instead of Tool
 //TODO think about pro and cons of using one package manager for everything (in this case we are using brew instead of pip for python packages)
@@ -873,3 +911,33 @@ object six extends Tool("six", RequiredVersion.any(python)):
 object yaml extends Tool("yaml", RequiredVersion.any(python)):
   override def installedVersion()(using wd: MaybeGiven[Path]): InstalledVersion =
     python.installedPackageVersion(name)
+
+object pyenv extends Tool("pyenv", versionLinePrefix = "pyenv "):
+  def installedPythonVersions() =
+    runLines("versions", "--bare")
+  def isPythonInstalled(version: String) =
+    installedPythonVersions().exists(_.startsWith(version))
+  def installPython(version: String) =
+    if isPythonInstalled(version) then println(s"Python $version is already installed")
+    else
+      println(s"Installing Python $version")
+      runVerbose("install", version)
+  def activePythonPath()(using wd: MaybeGiven[Path]): Option[Path] =
+    runText("which", "python").pipe { path =>
+      if path.isBlank() then
+        println("No active python version")
+        None
+      else
+        println(s"Active python version: $path")
+        Some(Path(path))
+    }
+  def globalPythonVersion: String = runText("global")
+  def globalPythonVersion_=(version: String): Unit =
+    installPython(version)
+    runVerbose("global", version)
+  def localPythonVersion(using wd: MaybeGiven[Path]): String = runText("local")
+  def localPythonVersion_=(version: String)(using wd: MaybeGiven[Path]): Unit =
+    installPython(version)
+    runVerbose("local", version)
+  def exec(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
+    runVerbose("exec" :: args.toList*)

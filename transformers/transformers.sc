@@ -57,7 +57,7 @@ object transformers extends Tool("transformers", RequiredVersion.any(python)):
       "--revision",
       modelRevision,
       "--cache_dir",
-      (InstallFolder / "transformersCache").toString,
+      (OzToolsFolder / "transformersCache").toString,
       "--pad_token",
       model.padToken,
       "--max_length",

@@ -15,5 +15,5 @@ import os.*
 
 given Array[String] = args
 given folder: Path  = argCallerOrCurrentFolder(0)
-//TODO hide the notion of InstallFolder from here
-wrapScripts(folder, InstallFolder)
+//TODO hide the notion of OzToolsFolder from here
+wrapScripts(folder, OzToolsFolder)
