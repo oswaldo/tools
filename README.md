@@ -1,6 +1,8 @@
 # oztools
 
-<img src="https://raw.githubusercontent.com/oswaldo/tools/assets/images/oztools.jpeg" width="512"  align="middle">
+<p align="center">
+  <img src="https://raw.githubusercontent.com/oswaldo/tools/assets/images/oztools.jpeg" width="512" />
+</p>
 
 > _Here be dragons 🐉_
 > This is a first draft / work in progress / flow of thought, and at the moment should not be considered as ready for production.
