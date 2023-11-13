@@ -1,5 +1,7 @@
 # oztools
 
+[](https://raw.githubusercontent.com/oswaldo/tools/assets/images/oztools.jpeg | width=100)
+
 > _Here be dragons 🐉_
 > This is a first draft / work in progress / flow of thought, and at the moment should not be considered as ready for production.
 > Lots of totally untested code ahead.
