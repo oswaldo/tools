@@ -96,7 +96,7 @@ def parseVersionFromLines(lines: => List[String], versionLinePrefix: String): In
   Try(lines) match
     case Failure(e) =>
       println(s"  failed to parse version from lines: $e")
-      InstalledVersion.NA
+      InstalledVersion.Absent
     case Success(lines) =>
       lines.collectFirst {
         case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix)
