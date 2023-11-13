@@ -81,7 +81,7 @@ def argCallerOrCurrentFolder(i: Int)(using args: Array[String]): Path =
   argOrCallerFolderOption(i).getOrElse(os.pwd)
 
 //it is a common case that the --version or equivalent of some tool outputs one or more lines where the line containing the actual version is prefixed by some string. this function tries to parse the version from the output of a tool that follows this pattern
-def parseVersionFromLines(lines: List[String], versionLinePrefix: String): InstalledVersion =
+def parseVersionFromLines(lines: => List[String], versionLinePrefix: String): InstalledVersion =
 
   def semverSafe(parts: Seq[String]) =
     parts
@@ -93,22 +93,29 @@ def parseVersionFromLines(lines: List[String], versionLinePrefix: String): Insta
         else p
       }
 
-  lines.collectFirst { case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix) } match
-    case None => InstalledVersion.NA
-    case Some(v) =>
-      Some(v)
-        .filter(_.nonEmpty)
-        // it is also common to have one or more space followed by some suffix, which we want to drop
-        .map { s =>
-          val parts = semverSafe(s.split("\\s+"))
-          if versionLinePrefix.isEmpty then
-            parts
-              .find(just.semver.SemVer.parse(_).isRight)
-              .getOrElse(parts.head)
-          else parts.head
-        }
-        .map(InstalledVersion.Version(_))
-        .getOrElse(InstalledVersion.NA)
+  Try(lines) match
+    case Failure(e) =>
+      println(s"  failed to parse version from lines: $e")
+      InstalledVersion.NA
+    case Success(lines) =>
+      lines.collectFirst {
+        case line if line.startsWith(versionLinePrefix) => line.stripPrefix(versionLinePrefix)
+      } match
+        case None => InstalledVersion.NA
+        case Some(v) =>
+          Some(v)
+            .filter(_.nonEmpty)
+            // it is also common to have one or more space followed by some suffix, which we want to drop
+            .map { s =>
+              val parts = semverSafe(s.split("\\s+"))
+              if versionLinePrefix.isEmpty then
+                parts
+                  .find(just.semver.SemVer.parse(_).isRight)
+                  .getOrElse(parts.head)
+              else parts.head
+            }
+            .map(InstalledVersion.Version(_))
+            .getOrElse(InstalledVersion.NA)
 
 type MaybeGiven[T] = T | NotGiven[T]
 extension [T: ClassTag](mg: MaybeGiven[T])
@@ -203,8 +210,8 @@ case class StringReplacement(
   val replacement: String,
 )
 
-def doReplacements(orignal: String, replacements: StringReplacement*): String =
-  replacements.foldLeft(orignal) { (result, replacement) =>
+def doReplacements(original: String, replacements: StringReplacement*): String =
+  replacements.foldLeft(original) { (result, replacement) =>
     result.replace(replacement.originalFragment, replacement.replacement)
   }
 
