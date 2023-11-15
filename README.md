@@ -14,10 +14,11 @@ The idea of "the documentation is the code" is hard to achieve if the script cod
 
 Wouldn't it be nice:
 
-- if instead of `curl -fsSL "http://example.com"` you could write `curl get "http://example.com"`?
-- if instead of going through endless investigations and documentation to setup all the different requirements for the different tools you need, you could accumulate all that knowledge in a single place and just reuse it with a simple `./setup.sh`?
-- if instead of waiting for the nice devs in Mount Olympus to add support for your favourite tool, you could just add it yourself, possibly with a single line of code?
-- to have scripts that simply run with no relevant overhead, and take care of all dependencies (even for dependencies that have no package management system in place)?
+- if you could write `curl get "http://example.com"` instead of `curl -fsSL "http://example.com"`?
+- endless investigations and documentation to setup all the different requirements for the different tools you need would be replaced with a simple `./setup.sh`?
+- if you could add support for your favorite tool with possibly a single line of code instead of waiting for a future version?
+- to have scripts that simply run with no relevant overhead?
+- if scripts would take care of all dependencies (even for dependencies that have no package management system in place)?
 - to have scripts that are easy to read and maintain, with great IDE support and immediate, access to the accumulated knowledge and technologies from different communities?
 
 This is what this project is about, to make the life of the developer easier by covering some cases that get ignored or reimplemented over and over again through the developer years.
@@ -83,8 +84,8 @@ Suppose we want to add support to git so we can conveniently use it in your scri
 
    ```scala
    object git extends Tool("git"):
-     def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
-       run("clone", repo, path.toString)
+      def clone(repo: String)(path: Path = os.home / "git" / repo.split("/").last) =
+         runVerbose("clone", repo, path.toString)
    ```
 
 1. Done! That means you can call `git.clone("some repo url")()` from any script and it will be cloned to the git folder under the current user home. But let's make it a bit more interesting and add one that clones GitHub repositories to a specific folder by providing the user and repo name:
