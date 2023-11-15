@@ -186,6 +186,9 @@ object git extends Tool("git"):
         case _ => throw new Exception(s"Failed to parse branch line: $line")
     }
 
+  def currentBranch()(using wd: MaybeGiven[Path]): Branch =
+    branchList().find(_.current).getOrElse(throw new Exception("Failed to get current branch"))
+
   def branchDelete(force: Boolean = false, branchNames: String*)(using wd: MaybeGiven[Path]) =
     branch(BranchFlags.Delete(force, branchNames*))
 
@@ -204,6 +207,9 @@ object git extends Tool("git"):
   def checkout(branchName: String)(using wd: MaybeGiven[Path]) =
     runVerbose("checkout", branchName)
 
+  def checkoutNewBranch(branchName: String)(using wd: MaybeGiven[Path]) =
+    runVerbose("checkout", "-b", branchName)
+
   object config:
     // TODO think about using parser logic here if some case would benefit from it
     def apply(key: String)(using wd: MaybeGiven[Path]): Option[String] =
@@ -212,7 +218,7 @@ object git extends Tool("git"):
         case _                                => None
     def originUrl()(using wd: MaybeGiven[Path]) = apply("remote.origin.url")
 
-  // sometimes you can get a local repo corrupted, by the IDE or other tools, or you just want a fresh clone to try something. This gitReclone function will backup the repo in the wd by moving it to a folder with the same name added with _bak-yyyy-MM-dd-HH-mm-ss and then clone it again to the original folder and try to switch to the same branch you were before
+  // sometimes you can get a local repo corrupted, by the IDE or other tools, or you just want a fresh clone to try something. This gitReclone function will backup the repo in the wd by moving it to a folder with the same name added with _bak-yyyy-MM-dd-HHmmss and then clone it again to the original folder and try to switch to the same branch you were before
   def reclone(localRepoFolder: Path) =
     given wd: Path = localRepoFolder
     val repoRoot   = repoRootPath().getOrElse(throw new Exception("Not a git repo"))
@@ -222,18 +228,25 @@ object git extends Tool("git"):
     val timestampSuffix =
       import java.time.LocalDateTime
       import java.time.format.DateTimeFormatter
-      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HH-mm-ss")
+      val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
       LocalDateTime.now.format(formatter)
     val backupFolder  = repoRoot / RelPath(s"../${repoName}_bak-$timestampSuffix")
-    val currentBranch = branchList().find(_.current).getOrElse(throw new Exception("Failed to get current branch"))
+    val workingBranch = branchList().find(_.current).getOrElse(throw new Exception("Failed to get current branch"))
     println(s"Backing up $repoRoot to $backupFolder")
     os.copy(repoRoot, backupFolder)
-    os.remove.all(repoRoot)
+    os.list(repoRoot).foreach { path =>
+      os.remove.all(path)
+    }
     clone(originUrl)(repoRoot)
-    checkout(currentBranch.name)
+    // we need to check if the branch exists in the new clone and create it if needed
+    if !branchList().exists(_.name == workingBranch.name) then
+      println(
+        s"Creating branch ${workingBranch.name} from ${currentBranch().name} as it didn't exist in the fresh clone",
+      )
+      checkoutNewBranch(workingBranch.name)
+    else
+      println(s"Checking out branch ${workingBranch.name}")
+      checkout(workingBranch.name)
     println(s"Recloned $repoRoot to $backupFolder")
-    println(
-      s"You might need to cd into $repoRoot again as the OS might get a bit confused with the folder being deleted and recreated",
-    )
 
 end git
