@@ -41,6 +41,7 @@ lazy val minimalSetup = ArtifactSet(
 lazy val devSetup = minimalSetup ++ ArtifactSet(
   aws,
   awsSso,
+  docsify,
   fig,
   git,
   gpg,
@@ -56,7 +57,6 @@ lazy val devSetup = minimalSetup ++ ArtifactSet(
 )
 
 lazy val fullSetupTools = devSetup ++ ArtifactSet(
-  docsify,
   hackNerdFont,
   llvm, // llvm if you want to play with scala native
   osboxes,
