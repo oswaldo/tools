@@ -1,7 +1,4 @@
-<div class="hide-in-sidebar">
 # oztools
-
-</div>
 
 <img src="https://raw.githubusercontent.com/oswaldo/tools/assets/images/oztools.jpeg" width="512" />
 
