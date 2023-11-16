@@ -1,4 +1,8 @@
+<div class="hide-in-sidebar">
+
 # oztools
+
+</div>
 
 <img src="https://raw.githubusercontent.com/oswaldo/tools/assets/images/oztools.jpeg" width="512" />
 
@@ -35,11 +39,9 @@ It follows a few principles:
 
 As with any group of principles, they are not always compatible and sometimes they even contradict each other. In those cases, the order of the principles above is the order of priority.
 
-## Getting started (for the impatient)
+## Setup
 
-### Setup
-
-Currently, this project is developed and tested only on MacOS and, although the project could even be used to install git itself, for now, we assume you already have it installed.
+Currently, this project is developed and tested only on MacOS with Apple silicon (M1) and, although the project could even be used to install git itself, for now, we assume you already have it installed.
 
 So open your terminal and run the following commands:
 
@@ -54,13 +56,13 @@ cd ~/git/tools
 ./setup.sh
 ```
 
-### First script
+## First script
 
-### Adding a new tool
+## Adding a new tool
 
 Suppose we want to add support to git so we can conveniently use it in your scripts (supposing it wasn't already there).
 
-#### Example: Adding git support
+### Example: Adding git support
 
 1. Although it is a very common and widely used tool, we don't want to add it to the `core` module, so it doesn't become an ever-growing mess.
 
@@ -78,7 +80,7 @@ Suppose we want to add support to git so we can conveniently use it in your scri
 
 1. Done! Yes, that's it. It doesn't do much though (out of the box you basically get the ability to install it by calling `git.installIfNecessary()`).
 
-#### Example: Adding a function to clone a repository
+### Example: Adding a function to clone a repository
 
 1. Let's add a function to clone a repository. We change the `git` object we just added to `common/core.sc` to the following:
 
@@ -107,7 +109,7 @@ git.hubClone("oswaldo/tools")(os.home / "example" / "build")
 >
 > — Good that you ask...
 
-#### Example: Adding a large language model as a tool
+### Example: Adding a large language model as a tool
 
 There is a whole zoo of LLMs at the moment, with installation instructions that can be as simple as "install it using the XYZ tool" (which has its own installation instructions) to complex multi-page documents with lots of steps and requirements.
 
@@ -181,7 +183,7 @@ Let's say you want to be able to chat about some local files using a locally run
 
    > As the installation process is a bit more complex and can fail or be aborted in the middle, in the real implementation, we wrap the body of the install function in one called checkCompletion, and you can check the full implementation in the [privategpt.sc](./common/tools/privategpt/privategpt.sc) file.
 
-#### Example: Exposing the PrivateGPT server as a program
+### Example: Exposing the PrivateGPT server as a program
 
 1. Now we want to be able to run the server from the command line, so we create a new program:
 
@@ -207,7 +209,7 @@ Let's say you want to be able to chat about some local files using a locally run
 
 1. Done! 🎉
 
-### Wrapper Scripts (aka Programs)
+## Wrapper Scripts (aka Programs)
 
 To make it easier to run scripts from the command line, you can create wrapper scripts that will be installed in your path whenever setup.sh is called.
 
