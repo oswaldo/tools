@@ -4,6 +4,7 @@
 
 import os.*
 import java.nio.file.attribute.PosixFilePermission
+import java.time.LocalTime
 import util.*
 import pprint.*
 import util.chaining.scalaUtilChainingOps
@@ -145,6 +146,12 @@ extension (p: proc)
   def callVerboseLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     callVerbose().out.lines().toList
 
+  def spawnVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
+    p.spawn(
+      cwd = wd.orNull,
+      env = env.orNull,
+    )
+
 extension (commandWithArguments: List[String])
   def callLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments).callLines()
@@ -158,6 +165,11 @@ extension (commandWithArguments: List[String])
     os.proc(commandWithArguments).callVerboseText()
   def callVerboseLines()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     os.proc(commandWithArguments).callVerboseLines()
+
+  def spawnVerbose()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
+    os.proc(commandWithArguments).spawnVerbose()
+
+end extension
 
 extension (commandWithArguments: String)
   def splitCommandWithArguments(): List[String] =
@@ -557,6 +569,14 @@ trait Tool(
   def runVerboseLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     runVerboseLines(args.toList)
 
+  def runVerboseBg(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
+    println(s"running ${callAsString(args*)} in the background (wd: $wd, env: $env)")
+    val sp = (name :: args).spawnVerbose()
+    sp
+  def runVerboseBg(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
+    runVerboseBg(args.toList)
+end Tool
+
 case class ToolExtension(
   val extensionId: String,
   // in this case, None means we don't know what the dependencies are. Some(Empty) means we know there are no dependencies. Some(Some(List.empty)) means we know there are no dependencies. Some(List(...))) means we know what the dependencies are.
@@ -722,6 +742,52 @@ object oztools extends BuiltInTool("oztools"):
 
 object bash extends BuiltInTool("bash") with Shell
 
+object ps extends BuiltInTool("ps"):
+
+  case class Process(id: Int, terminal: Option[String], state: String, time: LocalTime, command: String):
+    def kill() = core.kill(id)
+    def forceKill() = core.kill.force(id)
+
+  def list(): List[Process] = 
+    val lines = runLines("ax")
+    lines.tail.flatMap { line =>
+      line.trim.split("\\s+") match { 
+        //we need a case for the array matching the first 4 elements in the array, and the rest should be the command
+        case Array[String](id, terminal, state, time, command*) =>
+          Some(Process(id.trim.toInt, Option(terminal.trim).filter(_.nonEmpty), state.trim, {
+            val Array[String](accumulatedMinutes, secondsAndCentesimals) = time.split(":")
+            val Array[String](seconds, centesimals) = secondsAndCentesimals.split("\\.")
+            val rawMinutes = accumulatedMinutes.toInt
+            val hours = rawMinutes / 60
+            val minutes = rawMinutes - hours * 60
+            LocalTime.of(0, minutes.toInt, seconds.toInt, centesimals.toInt * 10000000)
+          }, command.mkString(" ")))
+        case x =>
+          None 
+      }
+    }
+
+  def processesByCommand(commandPart: String): List[Process] =
+    list().filter(_.command.contains(commandPart))
+
+object kill extends BuiltInTool("kill"):
+  def apply(pid: Int) = runVerbose(pid.toString)
+  def force(pid: Int) = runVerbose("-9", pid.toString)
+  def withCommandPart(commandPart: String) =
+    ps.processesByCommand(commandPart).foreach { process =>
+      println(s"Killing process ${process.id} with command ${process.command}")
+      kill(process.id)
+    }
+  def forceWithCommandPart(commandPart: String) =
+    ps.processesByCommand(commandPart).foreach { process =>
+      println(s"Killing process ${process.id} with command ${process.command}")
+      force(process.id)
+    }
+
+object killall extends BuiltInTool("killall"):
+  def apply(name: String) = runVerbose(name)
+  def force(name: String) = runVerbose("-9", name)
+
 object pkgutil extends BuiltInTool("pkgutil"):
   def pkgInfo(packageId: String) = Try(runLines("--pkg-info", packageId)) match
     case Success(info) if info.nonEmpty =>
@@ -773,7 +839,10 @@ object xcodeSelect extends Tool("xcode-select"):
 end xcodeSelect
 
 object make extends BuiltInTool("make", RequiredVersion.any(xcodeSelect)):
-  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) = runVerbose("run")
+  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit = 
+    runVerbose("run")
+  def runBg()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess = 
+    runVerboseBg("run")
 
 object fcList extends Tool("fc-list"):
   override def install(requiredVersion: RequiredVersion): Unit =
@@ -790,6 +859,8 @@ object DownloadableFile:
 
 object curl extends Tool("curl"):
   def get(url: String) = runText("-fsSL", url)
+  def post(url: String, data: String, contentType: String) =
+    runText("-X", "POST", "-H", s"Content-Type: $contentType", "-d", data, url)
   def download(url: String, destination: Path): Unit =
     runVerbose("-C", "-", "-fSL", "-o", destination.toString, url)
   def download(downloadable: DownloadableFile, destinationPath: Option[Path] = None): Path =

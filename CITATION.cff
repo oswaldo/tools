@@ -1,0 +1,31 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: oztools
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Oswaldo
+    family-names: Cavalcanti Dantas
+    name-suffix: Jr.
+    email: oswaldodantas@gmail.com
+    orcid: 'https://orcid.org/0000-0002-8762-8399'
+repository-code: 'https://github.com/oswaldo/tools'
+abstract: >-
+  The “oztools” project is a developer's toolkit that
+  provides scripts to automate common tasks, aiming to
+  enhance effectiveness, simplicity, and convenience. It
+  includes scripts for tools like git, aws, brew, curl, and
+  more, and allows for easy extensibility to add new tools.
+  The project is guided by principles of pragmatism and
+  clarity and is currently developed and tested only on
+  MacOS with Apple silicon (M1).
+keywords:
+  - automation
+  - toolkit
+  - llm
+  - ai
+license: MIT
