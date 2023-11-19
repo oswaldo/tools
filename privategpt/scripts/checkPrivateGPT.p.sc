@@ -26,4 +26,3 @@ privategpt.check() match
     println(s"private_gpt is failing: $message")
   case NotRunning =>
     println("private_gpt is not running")
-
