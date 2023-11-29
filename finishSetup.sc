@@ -3,7 +3,9 @@
 //> using scala 3.3.1
 //> using file "common/core.sc"
 //> using file "common/tools.sc"
+//> using file "ad/adq.sc"
 //> using file "aws/aws.sc"
+//> using file "espeak/espeak.sc"
 //> using file "git/git.sc"
 //> using file "gnupg/gnupg.sc"
 //> using file "npm/npm.sc"
@@ -19,7 +21,9 @@ import core.given
 import tools.*
 import util.*
 
+import adq.*
 import aws.*
+import espeak.*
 import git.*
 import gnupg.*
 import npm.*
@@ -39,9 +43,11 @@ lazy val minimalSetup = ArtifactSet(
 )
 
 lazy val devSetup = minimalSetup ++ ArtifactSet(
+  adq,
   aws,
   awsSso,
   docsify,
+  espeak,
   fig,
   git,
   gpg,

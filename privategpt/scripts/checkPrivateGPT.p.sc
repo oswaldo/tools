@@ -19,11 +19,10 @@ import pprint.*
 import privategpt.*
 import privategpt.ServerStatus.*
 
-privategpt.check() match
+privategpt.checkStatus() match
   case Running =>
     println("private_gpt is already running")
   case Failing(message) =>
     println(s"private_gpt is failing: $message")
   case NotRunning =>
     println("private_gpt is not running")
-

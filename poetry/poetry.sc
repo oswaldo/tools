@@ -16,6 +16,10 @@ object poetry extends Tool("poetry", RequiredVersion.any(xcodeSelect)) with CanB
       runLines("--version").map(_.replace("(", "").replace(")", "")),
       "Poetry version ",
     )
+  override def install(requiredVersion: RequiredVersion): Unit =
+    bash.executeVerbose("curl -sSL https://install.python-poetry.org | python3 -")
+    given os.Path = os.pwd
+    config.update("virtualenvs.in-project", "true")
   override val compilePathNames = List()
   override def canCompile()(using path: Path): Boolean =
     os.exists(path / "pyproject.toml")
