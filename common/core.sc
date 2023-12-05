@@ -569,7 +569,9 @@ trait Tool(
   def runVerboseLines(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): List[String] =
     runVerboseLines(args.toList)
 
-  def runVerboseBg(args: List[String])(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
+  def runVerboseBg(
+    args: List[String],
+  )(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
     println(s"running ${callAsString(args*)} in the background (wd: $wd, env: $env)")
     val sp = (name :: args).spawnVerbose()
     sp
@@ -745,26 +747,32 @@ object bash extends BuiltInTool("bash") with Shell
 object ps extends BuiltInTool("ps"):
 
   case class Process(id: Int, terminal: Option[String], state: String, time: LocalTime, command: String):
-    def kill() = core.kill(id)
+    def kill()      = core.kill(id)
     def forceKill() = core.kill.force(id)
 
-  def list(): List[Process] = 
+  def list(): List[Process] =
     val lines = runLines("ax")
     lines.tail.flatMap { line =>
-      line.trim.split("\\s+") match { 
-        //we need a case for the array matching the first 4 elements in the array, and the rest should be the command
+      line.trim.split("\\s+") match
+        // we need a case for the array matching the first 4 elements in the array, and the rest should be the command
         case Array[String](id, terminal, state, time, command*) =>
-          Some(Process(id.trim.toInt, Option(terminal.trim).filter(_.nonEmpty), state.trim, {
-            val Array[String](accumulatedMinutes, secondsAndCentesimals) = time.split(":")
-            val Array[String](seconds, centesimals) = secondsAndCentesimals.split("\\.")
-            val rawMinutes = accumulatedMinutes.toInt
-            val hours = rawMinutes / 60
-            val minutes = rawMinutes - hours * 60
-            LocalTime.of(0, minutes.toInt, seconds.toInt, centesimals.toInt * 10000000)
-          }, command.mkString(" ")))
+          Some(
+            Process(
+              id.trim.toInt,
+              Option(terminal.trim).filter(_.nonEmpty),
+              state.trim, {
+                val Array[String](accumulatedMinutes, secondsAndCentesimals) = time.split(":")
+                val Array[String](seconds, centesimals)                      = secondsAndCentesimals.split("\\.")
+                val rawMinutes                                               = accumulatedMinutes.toInt
+                val hours                                                    = rawMinutes / 60
+                val minutes                                                  = rawMinutes - hours * 60
+                LocalTime.of(0, minutes.toInt, seconds.toInt, centesimals.toInt * 10000000)
+              },
+              command.mkString(" "),
+            ),
+          )
         case x =>
-          None 
-      }
+          None
     }
 
   def processesByCommand(commandPart: String): List[Process] =
@@ -839,9 +847,9 @@ object xcodeSelect extends Tool("xcode-select"):
 end xcodeSelect
 
 object make extends BuiltInTool("make", RequiredVersion.any(xcodeSelect)):
-  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit = 
+  def run()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): Unit =
     runVerbose("run")
-  def runBg()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess = 
+  def runBg()(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]): os.SubProcess =
     runVerboseBg("run")
 
 object fcList extends Tool("fc-list"):

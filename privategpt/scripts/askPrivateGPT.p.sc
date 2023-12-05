@@ -25,4 +25,3 @@ argRequired[String](0, "at least a single word is required!")
 val response = privategpt.complete(args.mkString(" "))
 println()
 println(response)
-
