@@ -223,14 +223,14 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     tryLoop(retries)
 
   case class ChatCompletionRequest(
-    messages: List[ChatCompletionMessage],
+    val messages: List[ChatCompletionMessage],
     @key("use_context")
-    useContext: Boolean = false,
+    val useContext: Boolean = false,
     @key("context_filter")
-    contextFilter: Option[ContextFilter] = None,
+    val contextFilter: Option[ContextFilter] = None,
     @key("include_sources")
-    includeSources: Boolean = false,
-    stream: Boolean = false,
+    val includeSources: Boolean = false,
+    val stream: Boolean = false,
   ) derives ReadWriter
 
   case class ChatCompletionMessage(role: String, content: String) derives ReadWriter
@@ -285,7 +285,7 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     @key("doc_id")
     docId: String,
     @key("doc_metadata")
-    docMetadata: Option[Map[String, String]] = None,
+    docMetadata: Map[String, String] = Map.empty,
   ) derives ReadWriter
 
   def chatComplete(
@@ -308,12 +308,14 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
         case "Internal Server Error" =>
           throw new Exception(s"Error in completion: $responseString")
         case _ =>
+          println("!!!" + responseString + "!!!")
           read[ChatCompletionResponse](responseString)
     } match
       case Success(response) =>
         response
       case Failure(e) =>
         println(s"Error in chat completion: ${e.getMessage}")
+        e.printStackTrace()
         throw e
 
   case class ChatHistory(messages: List[ChatCompletionMessage] = Nil) derives ReadWriter
@@ -379,13 +381,20 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     response.choices.head.message.content
 
   def interceptedChat(promptJson: String): String =
-    val interceptedRequest = read[ChatCompletionRequest](promptJson).messages.last
-    val nextPrompt         = interceptedRequest.content
-    val role               = interceptedRequest.role
+    val interceptedRequest = read[ChatCompletionRequest](promptJson)
+    val lastMessage        = interceptedRequest.messages.last
+    val nextPrompt         = lastMessage.content
+    val role               = lastMessage.role
     val history            = read[ChatHistory](os.read(historyFile))
     val combinedMessages   = combineMessages(history.messages, nextPrompt, role)
     pprint.pprintln(combinedMessages)
-    val response = chatComplete(combinedMessages :: Nil)
+    val response = chatComplete(
+      combinedMessages :: Nil,
+      interceptedRequest.useContext,
+      interceptedRequest.contextFilter,
+      interceptedRequest.includeSources,
+      interceptedRequest.stream,
+    )
     val newHistory = ChatHistory(
       history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
     )
