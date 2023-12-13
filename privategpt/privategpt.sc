@@ -341,14 +341,23 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     os.write.over(historyFile, write(newHistory))
     response.choices.head.message.content
 
-  def combineMessages(messages: List[ChatCompletionMessage], nextPrompt: String, role: String = "user"): ChatCompletionMessage =
+  def combineMessages(
+    messages: List[ChatCompletionMessage],
+    nextPrompt: String,
+    role: String = "user",
+  ): ChatCompletionMessage =
     ChatCompletionMessage(
       role,
-      s"""This is the history so far: ${messages.filterNot(_.role == "system").map(m => s" * ${m.role match
-            case "user"   => "Me"
-            case "assistant" => "You"
-          }: ${m.content}").mkString("\n\n|    ", "\n\n|    ", "\n")}
-          |Considering that history, now answer this prompt: $nextPrompt""".stripMargin,
+      s"""This is the history so far: ${messages
+          .filterNot(_.role == "system")
+          .map(m =>
+            s" * ${m.role match
+                case "user"      => "Me"
+                case "assistant" => "You"
+              }: ${m.content}",
+          )
+          .mkString("\n\n|    ", "\n\n|    ", "\n")}
+         |Considering that history, now answer this prompt: $nextPrompt""".stripMargin,
     )
 
   def continueChat(nextPrompt: String, role: String = "user"): String =
@@ -359,10 +368,26 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     // val newHistory = ChatHistory(messages = messages)
     // os.write.over(historyFile, write(newHistory))
     // response.choices.head.message.content
-    val history = read[ChatHistory](os.read(historyFile))
+    val history          = read[ChatHistory](os.read(historyFile))
     val combinedMessages = combineMessages(history.messages, nextPrompt, role)
     pprint.pprintln(combinedMessages)
-    val response = chatComplete(combinedMessages:: Nil)
-    val newHistory = ChatHistory(history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message)
+    val response = chatComplete(combinedMessages :: Nil)
+    val newHistory = ChatHistory(
+      history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
+    )
+    os.write.over(historyFile, write(newHistory))
+    response.choices.head.message.content
+
+  def interceptedChat(promptJson: String): String =
+    val interceptedRequest = read[ChatCompletionRequest](promptJson).messages.last
+    val nextPrompt         = interceptedRequest.content
+    val role               = interceptedRequest.role
+    val history            = read[ChatHistory](os.read(historyFile))
+    val combinedMessages   = combineMessages(history.messages, nextPrompt, role)
+    pprint.pprintln(combinedMessages)
+    val response = chatComplete(combinedMessages :: Nil)
+    val newHistory = ChatHistory(
+      history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
+    )
     os.write.over(historyFile, write(newHistory))
     response.choices.head.message.content
