@@ -221,3 +221,148 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
             tryLoop(retries - 1)
           else throw e
     tryLoop(retries)
+
+  case class ChatCompletionRequest(
+    messages: List[ChatCompletionMessage],
+    @key("use_context")
+    useContext: Boolean = false,
+    @key("context_filter")
+    contextFilter: Option[ContextFilter] = None,
+    @key("include_sources")
+    includeSources: Boolean = false,
+    stream: Boolean = false,
+  ) derives ReadWriter
+
+  case class ChatCompletionMessage(role: String, content: String) derives ReadWriter
+
+  case class ContextFilter(
+    @key("docs_ids")
+    docsIds: List[String],
+  ) derives ReadWriter
+
+  case class ChatCompletionResponse(
+    id: String,
+    @key("object") objectType: String,
+    created: Long,
+    model: String,
+    choices: List[ChatCompletionChoice],
+  ) derives ReadWriter
+
+  case class ChatCompletionChoice(
+    @key("finish_reason") finishReason: String,
+    delta: Option[ChatCompletionDelta] = None,
+    message: ChatCompletionMessage,
+    sources: List[ChatCompletionSource] = Nil,
+    index: Int,
+  ) derives ReadWriter
+
+  case class ChatCompletionDelta(
+    content: String,
+    // @key("content_tokens")
+    // contentTokens: List[String],
+    // @key("content_tokens_start")
+    // contentTokensStart: List[Int],
+    // @key("content_tokens_end")
+    // contentTokensEnd: List[Int],
+  ) derives ReadWriter
+
+  case class ChatCompletionSource(
+    @key("object")
+    sourceObject: String,
+    score: Double,
+    document: ChatCompletionDocument,
+    text: String,
+    @key("previous_texts")
+    previousTexts: List[String] = Nil,
+    @key("next_texts")
+    nextTexts: List[String] = Nil,
+    index: Option[Int] = None,
+  ) derives ReadWriter
+
+  case class ChatCompletionDocument(
+    @key("object")
+    documentObject: String,
+    @key("doc_id")
+    docId: String,
+    @key("doc_metadata")
+    docMetadata: Option[Map[String, String]] = None,
+  ) derives ReadWriter
+
+  def chatComplete(
+    messages: List[ChatCompletionMessage],
+    useContext: Boolean = false,
+    contextFilter: Option[ContextFilter] = None,
+    includeSources: Boolean = false,
+    stream: Boolean = false,
+  ): ChatCompletionResponse =
+    val uri            = s"$endpointBase/chat/completions"
+    val contentType    = "application/json"
+    val promptJson     = write(ChatCompletionRequest(messages, useContext, contextFilter, includeSources, stream))
+    val responseString = curl.post(uri, promptJson, contentType)
+    if responseString.startsWith("""{"detail":""") then
+      println(responseString)
+      val error = read[CompletionError](responseString)
+      throw new Exception(s"Error in completion: ${pprint(error)}")
+    Try {
+      responseString match
+        case "Internal Server Error" =>
+          throw new Exception(s"Error in completion: $responseString")
+        case _ =>
+          read[ChatCompletionResponse](responseString)
+    } match
+      case Success(response) =>
+        response
+      case Failure(e) =>
+        println(s"Error in chat completion: ${e.getMessage}")
+        throw e
+
+  case class ChatHistory(messages: List[ChatCompletionMessage] = Nil) derives ReadWriter
+
+  private val dataDir     = OzToolsFolder / "privategpt"
+  private val historyFile = dataDir / "history.json"
+
+  def clearLocalHistory(): Unit =
+    os.makeDir.all(dataDir)
+    os.remove.all(historyFile)
+    os.write.over(historyFile, write(ChatHistory()))
+
+  def firstChatCompleteMessage(): String =
+    clearLocalHistory()
+    val firstMessage = ChatCompletionMessage(
+      role = "system",
+      content = "Please greet the user that just started a new chat session with you",
+    )
+    val response = chatComplete(
+      List(
+        firstMessage,
+      ),
+    )
+    val newHistory = ChatHistory(firstMessage :: response.choices.map(_.message))
+    os.write.over(historyFile, write(newHistory))
+    response.choices.head.message.content
+
+  def combineMessages(messages: List[ChatCompletionMessage], nextPrompt: String, role: String = "user"): ChatCompletionMessage =
+    ChatCompletionMessage(
+      role,
+      s"""This is the history so far: ${messages.filterNot(_.role == "system").map(m => s" * ${m.role match
+            case "user"   => "Me"
+            case "assistant" => "You"
+          }: ${m.content}").mkString("\n\n|    ", "\n\n|    ", "\n")}
+          |Considering that history, now answer this prompt: $nextPrompt""".stripMargin,
+    )
+
+  def continueChat(nextPrompt: String, role: String = "user"): String =
+    // val history  = read[ChatHistory](os.read(historyFile))
+    // val messages = history.messages :+ ChatCompletionMessage(role, nextPrompt)
+    // pprint.pprintln(messages)
+    // val response   = chatComplete(messages)
+    // val newHistory = ChatHistory(messages = messages)
+    // os.write.over(historyFile, write(newHistory))
+    // response.choices.head.message.content
+    val history = read[ChatHistory](os.read(historyFile))
+    val combinedMessages = combineMessages(history.messages, nextPrompt, role)
+    pprint.pprintln(combinedMessages)
+    val response = chatComplete(combinedMessages:: Nil)
+    val newHistory = ChatHistory(history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message)
+    os.write.over(historyFile, write(newHistory))
+    response.choices.head.message.content
