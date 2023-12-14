@@ -49,12 +49,25 @@ val chatCompletionService = HttpRoutes.of[IO] { case req @ POST -> Root / "chat"
   yield resp
   resp
 }
+val chatWithHistoryService = HttpRoutes.of[IO] { case req @ POST -> Root / "chat" / "full" =>
+  val resp = for
+    message <- req.as[String]
+    resp    <- Ok(privategpt.chatWithHistory(message))
+  yield resp
+  resp
+}
+
+val historyService = HttpRoutes.of[IO] { 
+  case GET -> Root / "chat" / "history" =>
+    Ok(privategpt.history())
+}
+
 val healthService = HttpRoutes.of[IO] { case GET -> Root / "health" =>
   Ok(s"Healthy :)")
 }
 
 implicit val loggerFactory: LoggerFactory[IO] = Slf4jFactory.create[IO]
-val services                                  = healthService <+> chatCompletionService
+val services                                  = healthService <+> chatCompletionService <+> chatWithHistoryService <+> historyService
 val httpApp                                   = Router("/api" -> services).orNotFound
 val server = EmberServerBuilder
   .default[IO]
