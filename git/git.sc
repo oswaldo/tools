@@ -210,6 +210,9 @@ object git extends Tool("git"):
   def checkoutNewBranch(branchName: String)(using wd: MaybeGiven[Path]) =
     runVerbose("checkout", "-b", branchName)
 
+  def revert(file: os.Path) =
+    runVerbose("checkout", file.toString)
+
   object config:
     // TODO think about using parser logic here if some case would benefit from it
     def apply(key: String)(using wd: MaybeGiven[Path]): Option[String] =

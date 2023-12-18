@@ -6,3 +6,4 @@ downloads/
 target/
 node_modules/
 .java-version
+.idea/

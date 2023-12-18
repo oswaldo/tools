@@ -8,7 +8,32 @@ import java.time.LocalTime
 import util.*
 import pprint.*
 import util.chaining.scalaUtilChainingOps
+import scala.io.AnsiColor
 import scala.reflect.ClassTag
+
+object ozutil:
+  object text:
+    def indent(text: String, indent: String): String =
+      text.linesIterator.map(indent + _).mkString("\n")
+    def wrapTextReset(text: String): String =
+      (if text.startsWith(Console.RESET) then "" else Console.RESET) + text + (if text.endsWith(Console.RESET) then ""
+                                                                               else Console.RESET)
+    def cyanText(text: String): String =
+      Console.CYAN + text
+    def greenText(text: String): String =
+      Console.GREEN + text
+    def redText(text: String): String =
+      Console.RED + text
+    def yellowText(text: String): String =
+      Console.YELLOW + text
+    def blueText(text: String): String =
+      Console.BLUE + text
+    private val DARK_GRAY = "\u001b[48;5;8m"
+    def darkGrayBg(text: String): String =
+      DARK_GRAY + text
+    private val BOLD = "\u001b[1m"
+    def boldText(text: String): String =
+      BOLD + text
 
 def argOption[T: ClassTag](i: Int)(using args: Array[String], parser: (String) => Option[T]): Option[T] =
   Try {
@@ -191,6 +216,15 @@ def which(name: String): Option[Path] =
 
 def appendLine(file: Path, newLine: String) =
   os.write.append(file, newLine + "\n")
+
+def appendIfMissing(file: Path, newLine: String) =
+  if !os.exists(file) || !os.read.lines(file).contains(newLine) then
+    // create path and touch file if necessary
+    if !os.exists(file / os.up) then os.makeDir.all(file / os.up)
+    if !os.exists(file) then os.write(file, "")
+    appendLine(file, newLine)
+    println(s"  Appended to $file:\n$newLine")
+  else println(s"  $file already contains:\n$newLine")
 
 def insertBeforeLine(file: Path, line: String, newLine: String) =
   if !os.exists(file) then os.write(file, newLine + "\n")
@@ -700,6 +734,10 @@ case class BuiltInTool(
   override def installDependencies(): Unit                             = ()
   override def installIfNeeded(requiredVersion: RequiredVersion): Unit = ()
 
+//Trait for TTS and voice synthesizer solutions
+trait CanSpeak:
+  def sayIt(message: String): Unit
+
 trait Shell:
   this: Tool =>
   def execute(script: String)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) = run("-c", script)
@@ -978,16 +1016,6 @@ object python extends Tool("python", RequiredVersion.any(pyenv)) with Shell:
       case Success(v) => InstalledVersion.Version(v.trim())
 end python
 
-object pip extends BuiltInTool("pip", RequiredVersion.atLeast("3.4", python)):
-  enum PipInstallFlag(val flag: String):
-    case ForceReinstall extends PipInstallFlag("--force-reinstall")
-    case NoCacheDir     extends PipInstallFlag("--no-cache-dir")
-  def installPythonPackage(packageName: String, flags: PipInstallFlag*)(using
-    wd: MaybeGiven[Path],
-    env: MaybeGiven[Map[String, String]],
-  ) =
-    runVerbose("install" :: (flags.map(_.flag).toList :+ packageName)*)
-
 //TODO think if python packages should be treated as we do with extensions or if we need another abstraction instead of Tool
 //TODO think about pro and cons of using one package manager for everything (in this case we are using brew instead of pip for python packages)
 object six extends Tool("six", RequiredVersion.any(python)):
@@ -1027,3 +1055,13 @@ object pyenv extends Tool("pyenv", versionLinePrefix = "pyenv "):
     runVerbose("local", version)
   def exec(args: String*)(using wd: MaybeGiven[Path], env: MaybeGiven[Map[String, String]]) =
     runVerbose("exec" :: args.toList*)
+
+object pip extends BuiltInTool("pip", RequiredVersion.any(pyenv)):
+  enum PipInstallFlag(val flag: String):
+    case ForceReinstall extends PipInstallFlag("--force-reinstall")
+    case NoCacheDir     extends PipInstallFlag("--no-cache-dir")
+  def installPythonPackage(packageName: String, flags: PipInstallFlag*)(using
+    wd: MaybeGiven[Path],
+    env: MaybeGiven[Map[String, String]],
+  ) =
+    pyenv.exec("pip" :: "install" :: (flags.map(_.flag).toList :+ packageName)*)

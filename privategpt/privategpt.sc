@@ -1,3 +1,4 @@
+import upickle.JsReadWriters
 // Wrapper script for privategpt
 
 //> using toolkit latest
@@ -31,12 +32,18 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
     if git.isRepo() then git.pull()
     else git.hubClone("imartinez/privateGPT")(localClonePath)
     pyenv.localPythonVersion = "3.11"
-    pyenv.activePythonPath().foreach(poetry.env.use)
-    poetry.checkDependencies("ui", "local")
-    poetry.run("run", "python", "scripts/setup")
+    pyenv
+      .activePythonPath()
+      .foreach(poetry.env.use)
     given Map[String, String] = Map("CMAKE_ARGS" -> "-DLLAMA_METAL=on")
     pip.installPythonPackage("llama-cpp-python")
+    poetry.checkDependencies("ui", "local")
+    runSetup()
   }
+
+  def runSetup(): Unit =
+    given Path = localClonePath
+    poetry.run("run", "python", "scripts/setup")
 
   override def installedVersion()(using wd: MaybeGiven[Path]) =
     val versionFile = localClonePath / "version.txt"
@@ -75,6 +82,75 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
   def isRunning(): Boolean =
     ps.processesByCommand("private_gpt").nonEmpty
 
+  def waitUntilNotRunning(): Unit =
+    var count = 0
+    while isRunning() && count < 30 do
+      Thread.sleep(1000)
+      count += 1
+
+  def restart(): Unit =
+    stop()
+    waitUntilNotRunning()
+    start()
+
+  def restartIfNeeded() =
+    checkStatus() match
+      case ServerStatus.NotRunning =>
+        println("!!!Server is not running, starting it...")
+        start()
+      case ServerStatus.Failing(message) =>
+        println(s"!!!Server is failing: $message")
+        println("!!!Restarting it...")
+        restart()
+      case ServerStatus.Running =>
+        ()
+
+  // The local backend llm is declared in the file `privategpt/settings.yaml` with the following content:
+  // ```
+  // local:
+  //   prompt_style: "llama2"
+  //   llm_hf_repo_id: TheBloke/Mistral-7B-Instruct-v0.1-GGUF
+  //   llm_hf_model_file: mistral-7b-instruct-v0.1.Q4_K_M.gguf
+  //   embedding_hf_model_name: BAAI/bge-small-en-v1.5
+
+  // For instance, to switch to DeepSeek, the content would be:
+  // local:
+  //   prompt_style: "llama2"
+  //   llm_hf_repo_id: TheBloke/deepseek-coder-6.7B-instruct-GGUF
+  //   llm_hf_model_file: deepseek-coder-6.7b-instruct.Q4_K_M.gguf
+  //   embedding_hf_model_name: BAAI/bge-small-en-v1.5
+
+  // After changing the backend configuration, the server needs to be stopped and `poetry run python scripts/setup` called again to guarantee the llm files are downloaded before starting the server again.
+
+  case class BackendLlm(
+    promptStyle: String = "llama2",
+    llmHfRepoId: String = "TheBloke/Mistral-7B-Instruct-v0.1-GGUF",
+    llmHfModelFile: String = "mistral-7b-instruct-v0.1.Q4_K_M.gguf",
+    embeddingHfModelName: String = "BAAI/bge-small-en-v1.5",
+  )
+
+  // Backends tested to work minimally well with the current setup
+  enum KnownBackendLlm(val backendLlm: BackendLlm):
+    case Mistral extends KnownBackendLlm(BackendLlm())
+    case DeepSeek
+        extends KnownBackendLlm(
+          BackendLlm(
+            llmHfRepoId = "TheBloke/deepseek-coder-6.7B-instruct-GGUF",
+            llmHfModelFile = "deepseek-coder-6.7b-instruct.Q4_K_M.gguf",
+          ),
+        )
+
+  def switchBackend(backend: KnownBackendLlm) =
+    stop()
+    waitUntilNotRunning()
+    // TODO extend core string replacement to support spans ("replace block starting with `xxx` and ending with `yyy` with `xxx some new content yyy`")
+    // implement switching backend...
+    runSetup()
+    start()
+    ???
+
+  // TODO consider circe-yaml to read the full settings.yaml
+
   // TODO think about moving this to core
   enum ServerStatus:
     case Running
@@ -85,12 +161,21 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
   private val endpointVersion = "v1"
   private val endpointBase    = s"$serverUriBase/$endpointVersion"
 
-  def check(): ServerStatus =
+  def checkStatus(): ServerStatus =
     if !isRunning() then ServerStatus.NotRunning
     else
-      val c = quickRequest.get(uri"$serverUriBase/health").send().code
-      if c.isSuccess then ServerStatus.Running
-      else ServerStatus.Failing(s"code ${c.code}")
+      Try {
+        val c = quickRequest.get(uri"$serverUriBase/health").send().code
+        if c.isSuccess then
+          // calling complete to check that the server is working (if it is warming up it will fail)
+          complete("hello")
+          ServerStatus.Running
+        else ServerStatus.Failing(s"code ${c.code}")
+      } match
+        case Success(status) => status
+        case Failure(e)      => ServerStatus.Failing(e.getMessage)
+
+  case class CompletionRequest(prompt: String) derives ReadWriter
 
   case class CompletionResponse(
     id: String,
@@ -108,10 +193,280 @@ object privategpt extends Tool("privategpt", RequiredVersion.any(pyenv, poetry))
   ) derives ReadWriter
   case class Message(role: String, content: String) derives ReadWriter
 
-  def complete(prompt: String): String =
+  case class CompletionError(detail: List[CompletionErrorDetail]) derives ReadWriter
+  case class CompletionErrorCtx(error: String) derives ReadWriter
+  case class CompletionErrorDetail(
+    @key("type") errorType: String,
+    loc: List[String],
+    msg: String,
+    ctx: CompletionErrorCtx,
+  ) derives ReadWriter
+
+  private def tryComplete(prompt: String): Try[String] =
     val uri            = s"$endpointBase/completions"
     val contentType    = "application/json"
-    val promptJson     = s"""{"prompt":"$prompt"}"""
+    val promptJson     = write(CompletionRequest(prompt))
     val responseString = curl.post(uri, promptJson, contentType)
-    val response       = read[CompletionResponse](responseString)
+    if responseString.startsWith("""{"detail":""") then
+      println(responseString)
+      val error = read[CompletionError](responseString)
+      throw new Exception(s"Error in completion: ${pprint(error)}")
+    Try {
+      responseString match
+        case "Internal Server Error" =>
+          throw new Exception(s"Error in completion: $responseString")
+        case _ =>
+          val response = read[CompletionResponse](responseString)
+          response.choices.head.message.content
+    }
+
+  def complete(prompt: String, retries: Int = 2, delay: Int = 1000): String =
+    @tailrec
+    def tryLoop(retries: Int): String =
+      tryComplete(prompt) match
+        case Success(response) =>
+          response
+        case Failure(e) =>
+          if retries > 0 then
+            println(s"Error in completion: ${e.getMessage}, retrying...")
+            Thread.sleep(delay)
+            tryLoop(retries - 1)
+          else throw e
+    tryLoop(retries)
+
+  case class ChatCompletionRequest(
+    val messages: List[ChatCompletionMessage],
+    @key("use_context")
+    val useContext: Boolean = false,
+    @key("context_filter")
+    val contextFilter: Option[ContextFilter] = None,
+    @key("include_sources")
+    val includeSources: Boolean = false,
+    val stream: Boolean = false,
+  ) derives ReadWriter
+
+  case class ChatCompletionMessage(role: String, content: String) derives ReadWriter
+
+  case class ContextFilter(
+    @key("docs_ids")
+    docsIds: List[String],
+  ) derives ReadWriter
+
+  case class ChatCompletionResponse(
+    id: String,
+    @key("object") objectType: String,
+    created: Long,
+    model: String,
+    choices: List[ChatCompletionChoice],
+  ) derives ReadWriter
+
+  case class ChatCompletionChoice(
+    @key("finish_reason") finishReason: String,
+    delta: Option[ChatCompletionDelta] = None,
+    message: ChatCompletionMessage,
+    sources: List[ChatCompletionSource] = Nil,
+    index: Int,
+  ) derives ReadWriter
+
+  case class ChatCompletionDelta(
+    content: String,
+    // @key("content_tokens")
+    // contentTokens: List[String],
+    // @key("content_tokens_start")
+    // contentTokensStart: List[Int],
+    // @key("content_tokens_end")
+    // contentTokensEnd: List[Int],
+  ) derives ReadWriter
+
+  case class ChatCompletionSource(
+    @key("object")
+    sourceObject: String,
+    score: Double,
+    document: ChatCompletionDocument,
+    text: String,
+    @key("previous_texts")
+    previousTexts: List[String] = Nil,
+    @key("next_texts")
+    nextTexts: List[String] = Nil,
+    index: Option[Int] = None,
+  ) derives ReadWriter
+
+  case class ChatCompletionDocument(
+    @key("object")
+    documentObject: String,
+    @key("doc_id")
+    docId: String,
+    @key("doc_metadata")
+    docMetadata: Map[String, String] = Map.empty,
+  ) derives ReadWriter
+
+  def chatComplete(
+    messages: List[ChatCompletionMessage],
+    useContext: Boolean = false,
+    contextFilter: Option[ContextFilter] = None,
+    includeSources: Boolean = false,
+    stream: Boolean = false,
+  ): ChatCompletionResponse =
+    val uri            = s"$endpointBase/chat/completions"
+    val contentType    = "application/json"
+    val promptJson     = write(ChatCompletionRequest(messages, useContext, contextFilter, includeSources, stream))
+    val responseString = curl.post(uri, promptJson, contentType)
+    if responseString.startsWith("""{"detail":""") then
+      println(responseString)
+      val error = read[CompletionError](responseString)
+      throw new Exception(s"Error in completion: ${pprint(error)}")
+    Try {
+      responseString match
+        case "Internal Server Error" =>
+          throw new Exception(s"Error in completion: $responseString")
+        case _ =>
+          read[ChatCompletionResponse](responseString)
+    } match
+      case Success(response) =>
+        response
+      case Failure(e) =>
+        println(s"Error in chat completion: ${e.getMessage}")
+        e.printStackTrace()
+        throw e
+
+  case class ChatHistory(messages: List[ChatCompletionMessage] = Nil) derives ReadWriter
+
+  private val dataDir     = OzToolsFolder / "privategpt"
+  private val historyFile = dataDir / "history.json"
+
+  def clearLocalHistory(): Unit =
+    os.makeDir.all(dataDir)
+    os.remove.all(historyFile)
+    os.write.over(historyFile, write(ChatHistory()))
+
+  def firstChatCompleteMessage(): String =
+    clearLocalHistory()
+    // val firstMessage = ChatCompletionMessage(
+    //   role = "system",
+    //   content = "Please greet the user that just started a new chat session with you",
+    // )
+    // val response = chatComplete(
+    //   List(
+    //     firstMessage,
+    //   ),
+    // )
+    // val newHistory = ChatHistory(firstMessage :: response.choices.map(_.message))
+    val newHistory = ChatHistory()
+    os.write.over(historyFile, write(newHistory))
+    // response.choices.head.message.content
+    ""
+
+  def combineMessages(
+    messages: List[ChatCompletionMessage],
+    nextPrompt: String,
+    role: String = "user",
+  ): ChatCompletionMessage =
+    ChatCompletionMessage(
+      role,
+      s"""This is the history so far: ${messages
+          .filterNot(_.role == "system")
+          .map(m =>
+            s" * ${m.role match
+                case "user"      => "Me"
+                case "assistant" => "You"
+              }: ${m.content}",
+          )
+          .mkString("\n\n|    ", "\n\n|    ", "\n")}
+         |Considering that history, now answer this prompt: $nextPrompt""".stripMargin,
+    )
+
+  def continueChat(nextPrompt: String, role: String = "user"): String =
+    // val history  = read[ChatHistory](os.read(historyFile))
+    // val messages = history.messages :+ ChatCompletionMessage(role, nextPrompt)
+    // pprint.pprintln(messages)
+    // val response   = chatComplete(messages)
+    // val newHistory = ChatHistory(messages = messages)
+    // os.write.over(historyFile, write(newHistory))
+    // response.choices.head.message.content
+    val history          = read[ChatHistory](os.read(historyFile))
+    val combinedMessages = combineMessages(history.messages, nextPrompt, role)
+    pprint.pprintln(combinedMessages)
+    val response = chatComplete(combinedMessages :: Nil)
+    val newHistory = ChatHistory(
+      history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
+    )
+    os.write.over(historyFile, write(newHistory))
     response.choices.head.message.content
+
+  def interceptedChat(promptJson: String): String =
+    println("????" + promptJson)
+    val interceptedRequest = read[ChatCompletionRequest](promptJson)
+    val lastMessage        = interceptedRequest.messages.last
+    val nextPrompt         = lastMessage.content
+    val role               = lastMessage.role
+    val history            = read[ChatHistory](os.read(historyFile))
+    val combinedMessages   = combineMessages(history.messages, nextPrompt, role)
+    pprint.pprintln(combinedMessages)
+    val response = chatComplete(
+      combinedMessages :: Nil,
+      interceptedRequest.useContext,
+      interceptedRequest.contextFilter,
+      interceptedRequest.includeSources,
+      interceptedRequest.stream,
+    )
+    val newHistory = ChatHistory(
+      history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
+    )
+    os.write.over(historyFile, write(newHistory))
+    response.choices.head.message.content
+
+  // given a history of messages, look for the ones where the role is `user` but the message starts with `System: `. We remove that prefix and change the role to `system`
+  def fixHistory(history: ChatHistory): ChatHistory =
+    val newMessages = history.messages.map {
+      case ChatCompletionMessage("user", content) if content.startsWith("System:") =>
+        println(s"Fixing message: $content")
+        ChatCompletionMessage("system", content.stripPrefix("System:"))
+      case other =>
+        println(s"Keeping message: $other")
+        other
+    }.filterNot(_.role == "system")
+    ChatHistory(newMessages)
+
+  def chatWithHistory(promptJson: String): String =
+    println("????" + promptJson)
+    restartIfNeeded()
+    val interceptedRequest = read[ChatCompletionRequest](promptJson)
+    val lastMessage        = interceptedRequest.messages.last
+    val nextPrompt         = lastMessage.content
+    val role               = lastMessage.role
+    val history            = fixHistory(read[ChatHistory](os.read(historyFile)))
+    pprint.pprintln(history)
+    val combinedMessages = combineMessages(history.messages, nextPrompt, role)
+    pprint.pprintln(combinedMessages)
+    def tryLoop(retries: Int): ChatCompletionResponse =
+      Try(
+        chatComplete(
+          combinedMessages :: Nil,
+          interceptedRequest.useContext,
+          interceptedRequest.contextFilter,
+          interceptedRequest.includeSources,
+          interceptedRequest.stream,
+        ),
+      ) match
+        case Success(response) =>
+          response
+        case Failure(e) =>
+          if retries <= 0 then throw e
+          else
+            println(s"!!!Error in chat completion: ${e.getMessage}, retrying...")
+            restartIfNeeded()
+            Thread.sleep(1000)
+            tryLoop(retries - 1)
+    val response = tryLoop(3)
+    val newHistory = fixHistory(
+      ChatHistory(
+        history.messages :+ ChatCompletionMessage(role, nextPrompt) :+ response.choices.head.message,
+      ),
+    )
+    pprint.pprintln(newHistory)
+    val jsonString = write(newHistory)
+    os.write.over(historyFile, jsonString)
+    jsonString
+
+  def history(): String =
+    write(fixHistory(read[ChatHistory](os.read(historyFile))))

@@ -1,7 +1,5 @@
 #!/usr/bin/env -S scala-cli shebang -S 3
 
-// This was generated with some scaffold to easy the creation of a new program.
-
 //> using toolkit latest
 //> using dep "com.lihaoyi::pprint::0.8.1"
 //> using file "../../common/core.sc"
@@ -19,10 +17,11 @@ import pprint.*
 import privategpt.*
 import privategpt.ServerStatus.*
 
-privategpt.checkStatus() match
-  case Running =>
-    println("private_gpt is already running")
-  case Failing(message) =>
-    println(s"private_gpt is failing: $message")
-  case NotRunning =>
-    println("private_gpt is not running")
+//WIP
+given Array[String] = args
+val prompt          = args.mkString(" ").trim()
+val response =
+  if prompt.isEmpty then privategpt.firstChatCompleteMessage()
+  else privategpt.continueChat(prompt)
+println()
+println(response)
