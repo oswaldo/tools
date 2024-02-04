@@ -171,7 +171,7 @@ object git extends Tool("git"):
     message: String,
   )
 
-  private val branchListLine = """^(\* )?(.*)\s+([0-9a-f]{7})(?:\s+\[(.*)\])?\s+(.*)$""".r
+  private val branchListLine = """^(\* )?(.*)\s+([0-9a-f]{4,40})(?:\s+\[(.*)\])?\s+(.*)$""".r
   def branchList()(using wd: MaybeGiven[Path]): List[Branch] =
     branch(BranchFlags.Verbose).map { line =>
       line match
